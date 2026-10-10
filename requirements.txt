@@ -1,0 +1,33 @@
+# FastAPI & ASGI Server
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.8.0
+python-multipart>=0.0.9
+
+# Database & ORM (Supabase PostgreSQL via Session Pooler)
+SQLAlchemy>=2.0.30
+psycopg[binary]>=3.2.0
+
+# Authentication & Security
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.0.1
+
+# AI, LLM & LangChain Ecosystem
+google-genai>=1.0.0
+langchain-google-genai>=2.0.0
+langchain-core>=0.3.0
+langchain-community>=0.3.0
+langgraph>=0.2.0
+
+# Search & Hybrid RAG (Vector + Sparse BM25)
+chromadb>=0.5.0
+rank-bm25>=0.2.2
+
+# Document Processing & PDF Export
+pypdf>=4.3.0
+reportlab>=4.2.0
+
+# Configuration & Utilities
+python-dotenv>=1.0.1
+requests>=2.32.0
