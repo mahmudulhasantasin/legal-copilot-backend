@@ -5,9 +5,11 @@ pydantic>=2.8.0
 pydantic-settings>=2.3.0
 python-multipart>=0.0.9
 
+
 # Database & ORM (Supabase PostgreSQL via asyncpg driver)
-SQLAlchemy>=2.0.30
+SQLAlchemy[asyncio]>=2.0.30
 asyncpg>=0.29.0
+greenlet>=3.0.0
 
 # Authentication & Security
 python-jose[cryptography]>=3.3.0
