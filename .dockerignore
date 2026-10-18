@@ -1,0 +1,29 @@
+# Git and Version Control
+.git
+.gitignore
+
+# Python Virtual Environment & Caches
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Environment Variables (Docker image should NOT contain these)
+.env
+.env.*
+
+# Local Data & Logs
+local_qdrant_data/
+chroma_db/
+*.log
+demo_emails.log
+*.db
+
+# Testing and Docs
+tests/
+README.md
+
+# OS specific
+.DS_Store
+Thumbs.db

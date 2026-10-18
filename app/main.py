@@ -73,7 +73,10 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",    # React/Next.js default
         "http://localhost:5173",    # Vite default
-        "https://your-production-domain.com", # Update before going live
+         "http://localhost:3000",    # রিঅ্যাক্ট লোকাল
+        "http://localhost:5173",    # ভাইট লোকাল
+        "https://*.hf.space",       # হাগিং ফেসের সব সাবডোমেইন
+        "*"                         # (আপাতত টেস্টিংয়ের জন্য, প্রোডাকশনে চাইলে ফ্রন্টএন্ডের ডোমেইন দিবেন), # Update before going live
     ],
     allow_credentials=True,
     allow_methods=["*"],
