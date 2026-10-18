@@ -76,7 +76,7 @@ app.add_middleware(
          "http://localhost:3000",    # রিঅ্যাক্ট লোকাল
         "http://localhost:5173",    # ভাইট লোকাল
         "https://*.hf.space",       # হাগিং ফেসের সব সাবডোমেইন
-        "*"                         # (আপাতত টেস্টিংয়ের জন্য, প্রোডাকশনে চাইলে ফ্রন্টএন্ডের ডোমেইন দিবেন), # Update before going live
+        "https://outliers-omega.vercel.app"  # (আপাতত টেস্টিংয়ের জন্য, প্রোডাকশনে চাইলে ফ্রন্টএন্ডের ডোমেইন দিবেন), # Update before going live
     ],
     allow_credentials=True,
     allow_methods=["*"],
