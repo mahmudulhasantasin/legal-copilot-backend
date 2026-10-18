@@ -1,37 +1,33 @@
 import os
+import requests
 from typing import Any, Dict, List
-from fastembed import TextEmbedding
-from fastembed.common.model_description import ModelSource, PoolingType
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 from app.config import settings
 
-TextEmbedding.add_custom_model(
-    model="intfloat/multilingual-e5-small",
-    pooling=PoolingType.MEAN,
-    normalization=True,
-    sources=ModelSource(hf="intfloat/multilingual-e5-small"),
-    dim=384,
-    model_file="onnx/model.onnx",
-)
-
 class QdrantVectorManager:
+    """Manages Qdrant vector operations using Hugging Face API for embeddings."""
+
     def __init__(self):
         self.qdrant_url = getattr(settings, "QDRANT_URL", None)
         self.qdrant_api_key = getattr(settings, "QDRANT_API_KEY", None)
         self.collection_name = getattr(settings, "QDRANT_COLLECTION_NAME", "bd_laws_e5_small")
+        
+        # ✅ Hugging Face API টোকেন (Render-এর Environment-এ HF_TOKEN হিসেবে সেট করতে হবে)
+        self.hf_token = os.getenv("HF_TOKEN", "")
+        # ✅ আপনার লোকাল স্ক্রিপ্ট যে মডেল ব্যবহার করছে, ঠিক সেই মডেলটিই এখানে ব্যবহার হচ্ছে
+        self.hf_api_url = "https://api-inference.huggingface.co/models/intfloat/multilingual-e5-small"
 
         if self.qdrant_url and self.qdrant_api_key:
-            print("Connecting to Qdrant Cloud...")
+            print("Connecting to Qdrant Cloud via API...")
             self.client = QdrantClient(url=self.qdrant_url, api_key=self.qdrant_api_key, timeout=60.0)
         else:
             print("Using Local Qdrant Database (./local_qdrant_data)...")
             self.client = QdrantClient(path="./local_qdrant_data")
 
-        model_name = getattr(settings, "EMBED_MODEL", "intfloat/multilingual-e5-small")
-        self.embedding_model = TextEmbedding(model_name=model_name)
         self.dimension = 384 
 
+        # Verify collection exists
         try:
             collections = [c.name for c in self.client.get_collections().collections]
             if self.collection_name not in collections:
@@ -45,16 +41,35 @@ class QdrantVectorManager:
         except Exception as err:
             print(f"[WARN] Failed to verify/create Qdrant collection: {err}")
 
+    def _get_embedding_from_api(self, text: str) -> List[float]:
+        """HF API থেকে ভেক্টর নিয়ে আসে (রেন্ডারে কোনো মেমরি খরচ করে না)।"""
+        headers = {}
+        if self.hf_token:
+            headers["Authorization"] = f"Bearer {self.hf_token}"
+            
+        payload = {
+            "inputs": [text],
+            "options": {"wait_for_model": True}
+        }
+        
+        try:
+            response = requests.post(self.hf_api_url, headers=headers, json=payload, timeout=30)
+            response.raise_for_status()
+            # HF API সাধারণত [[0.1, 0.2, ...]] এই ফরম্যাটে রেসপন্স দেয়
+            return response.json()[0]
+        except Exception as e:
+            print(f"[ERROR] HF API embedding failed: {e}")
+            # ফলব্যাক: যাতে অ্যাপ ক্র্যাশ না করে
+            return [0.0] * self.dimension 
+
     def embed_single(self, text: str) -> List[float]:
-        # ✅ FIX 2: কোয়েরির জন্য 'query: ' প্রিফিক্স যুক্ত করা হলো
-        embeddings = list(self.embedding_model.embed([f"query: {text}"]))
-        return embeddings[0].tolist()
+        # E5 মডেলের জন্য 'query: ' প্রিফিক্স
+        prefixed_text = f"query: {text}"
+        return self._get_embedding_from_api(prefixed_text)
 
     def embed_batch(self, texts: List[str]) -> List[List[float]]:
-        # ✅ FIX 3: ব্যাচ ডকুমেন্টের জন্য 'passage: ' প্রিফিক্স যুক্ত করা হলো
         prefixed_texts = [f"passage: {t}" for t in texts]
-        embeddings = list(self.embedding_model.embed(prefixed_texts))
-        return [e.tolist() for e in embeddings]
+        return [self._get_embedding_from_api(t) for t in prefixed_texts]
 
     def similarity_search(self, query: str, limit: int = 5, **kwargs) -> List[Dict[str, Any]]:
         search_limit = kwargs.get("top_k", limit)
