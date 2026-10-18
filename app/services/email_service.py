@@ -1,19 +1,6 @@
 # app/services/email_service.py
 """
 Email delivery for ContractMind.
-
-Transport backends (env: EMAIL_BACKEND):
-  - "gmail_api" (default): Gmail API over HTTPS (port 443).
-                           Works on hosts that block SMTP ports (465/587).
-  - "smtp": classic SMTP (465 implicit TLS / other STARTTLS).
-
-Gmail API auth uses OAuth 2.0. One-time setup:
-    python -m app.services.email_service --auth
-This writes token.json. On a headless server, generate token.json locally first,
-then ship it with the code and set GMAIL_HEADLESS=1.
-
-If every delivery attempt fails, the demo fallback logs the email to the
-terminal so the local flow (OTP, etc.) can still be tested.
 """
 
 import os
@@ -24,6 +11,7 @@ import asyncio
 import logging
 import smtplib
 import threading
+import json  # ✅ নতুন যুক্ত করা হয়েছে
 from email.message import EmailMessage
 
 from dotenv import load_dotenv
@@ -65,18 +53,28 @@ _gmail_service = None
 
 
 def _load_gmail_service():
-    """Build (and cache) the Gmail API client. Blocking — call inside a thread."""
+    """Build (and cache) the Gmail API client."""
     global _gmail_service
     if _gmail_service is not None:
         return _gmail_service
 
     with _gmail_lock:
-        if _gmail_service is not None:              # double-checked locking
+        if _gmail_service is not None:
             return _gmail_service
 
         creds = None
-        if os.path.exists(GMAIL_TOKEN_FILE):
+        
+        # ✅ FIX: চেক করা হচ্ছে টোকেনটি ফাইল নাকি সরাসরি JSON স্ট্রিং (Render-এর জন্য)
+        if GMAIL_TOKEN_FILE.strip().startswith("{"):
+            try:
+                info = json.loads(GMAIL_TOKEN_FILE)
+                creds = Credentials.from_authorized_user_info(info, GMAIL_SCOPES)
+                logger.info("[GMAIL AUTH] Loaded token from Environment Variable (JSON).")
+            except Exception as e:
+                logger.error(f"[GMAIL AUTH] Failed to parse token JSON from env: {e}")
+        elif os.path.exists(GMAIL_TOKEN_FILE):
             creds = Credentials.from_authorized_user_file(GMAIL_TOKEN_FILE, GMAIL_SCOPES)
+            logger.info("[GMAIL AUTH] Loaded token from local file.")
 
         # Refresh an expired token, or run the interactive flow once.
         if not creds or not creds.valid:
@@ -91,22 +89,25 @@ def _load_gmail_service():
             if not creds:
                 if GMAIL_HEADLESS:
                     raise RuntimeError(
-                        f"No valid {GMAIL_TOKEN_FILE} and GMAIL_HEADLESS=1. "
-                        "Generate token.json once on a machine with a browser "
-                        "and copy it to this host."
+                        "No valid token and GMAIL_HEADLESS=1. "
+                        "Generate token.json locally and paste its content into GMAIL_TOKEN_FILE."
                     )
-                if not os.path.exists(GMAIL_CREDENTIALS_FILE):
-                    raise FileNotFoundError(
-                        f"Missing {GMAIL_CREDENTIALS_FILE}. Download OAuth client JSON "
-                        "from Google Cloud Console (Desktop app type)."
-                    )
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    GMAIL_CREDENTIALS_FILE, GMAIL_SCOPES
-                )
-                creds = flow.run_local_server(port=0)   # opens browser
+                
+                # লোকাল সেটআপের জন্য (যদি ব্রাউজার ওপেন করার দরকার হয়)
+                if GMAIL_CREDENTIALS_FILE.strip().startswith("{"):
+                    info = json.loads(GMAIL_CREDENTIALS_FILE)
+                    flow = InstalledAppFlow.from_client_config(info, GMAIL_SCOPES)
+                    creds = flow.run_local_server(port=0)
+                elif os.path.exists(GMAIL_CREDENTIALS_FILE):
+                    flow = InstalledAppFlow.from_client_secrets_file(GMAIL_CREDENTIALS_FILE, GMAIL_SCOPES)
+                    creds = flow.run_local_server(port=0)
+                else:
+                    raise FileNotFoundError("Missing credentials.json or env JSON.")
 
-            with open(GMAIL_TOKEN_FILE, "w") as f:
-                f.write(creds.to_json())
+            # লোকাল পিসিতে নতুন টোকেন সেভ করা (Render-এ ফাইল রাইট করা যাবে না, তাই চেক করা হচ্ছে)
+            if not os.getenv("RENDER") and not os.getenv("RENDER_EXTERNAL_URL"):
+                with open("token.json", "w") as f:
+                    f.write(creds.to_json())
 
         _gmail_service = build("gmail", "v1", credentials=creds, cache_discovery=False)
         logger.info("[GMAIL AUTH] Service ready.")
@@ -132,9 +133,8 @@ def _send_via_gmail_api_sync(message: EmailMessage, max_attempts: int = 3) -> bo
 
         except HttpError as e:
             status = getattr(e.resp, "status", None)
-            # 429 = rate limit, 5xx = transient → backoff
             if status in (429, 500, 502, 503) and attempt < max_attempts:
-                delay = 2 ** (attempt - 1)             # 1s, 2s, ...
+                delay = 2 ** (attempt - 1)
                 logger.warning(f"[GMAIL API] {status} — retrying in {delay}s")
                 time.sleep(delay)
                 continue
@@ -172,7 +172,6 @@ def _send_via_smtp_sync(message: EmailMessage) -> bool:
 # UNIFIED SENDER
 # ──────────────────────────────────────────────────────────
 def _demo_fallback(recipient_email: str, subject: str, body: str) -> None:
-    """Print to terminal + append to demo_emails.log so the flow is testable."""
     logger.warning("=" * 60)
     logger.warning("🚨 EMAIL FAILED — DEMO FALLBACK ACTIVATED:")
     logger.warning(f"TO: {recipient_email}")
@@ -197,8 +196,6 @@ async def _send_email(recipient_email: str, subject: str, body: str) -> bool:
         return False
 
     message = EmailMessage()
-    # With the Gmail API, From must match the authenticated account (or a
-    # verified "Send mail as" alias); otherwise Gmail rewrites the header.
     message["From"] = f"ContractMind <{sender}>"
     message["To"] = recipient_email
     message["Subject"] = subject
@@ -223,9 +220,7 @@ async def _send_email(recipient_email: str, subject: str, body: str) -> bool:
 
 # ──────────────────────────────────────────────────────────
 # EMAIL TRIGGERS
-# (Signatures unchanged — auth.py and lawyer.py keep working)
 # ──────────────────────────────────────────────────────────
-
 async def send_otp_email(recipient_email: str, otp_code: str) -> bool:
     subject = "Your ContractMind Verification Code"
     body = (
@@ -236,13 +231,7 @@ async def send_otp_email(recipient_email: str, otp_code: str) -> bool:
     )
     return await _send_email(recipient_email, subject, body)
 
-
-async def send_lawyer_offer_email(
-    recipient_email: str,
-    contract_title: str,
-    payout_bdt: float,
-    hours: int = 3,
-) -> bool:
+async def send_lawyer_offer_email(recipient_email: str, contract_title: str, payout_bdt: float, hours: int = 3) -> bool:
     subject = "New Contract Review Offer"
     body = (
         f"Hello,\n\n"
@@ -253,12 +242,7 @@ async def send_lawyer_offer_email(
     )
     return await _send_email(recipient_email, subject, body)
 
-
-async def send_client_lawyer_assigned_email(
-    recipient_email: str,
-    lawyer_name: str,
-    contract_title: str,
-) -> bool:
+async def send_client_lawyer_assigned_email(recipient_email: str, lawyer_name: str, contract_title: str) -> bool:
     subject = "Lawyer Assigned to Your Contract"
     body = (
         f"Hello,\n\n"
@@ -269,12 +253,7 @@ async def send_client_lawyer_assigned_email(
     )
     return await _send_email(recipient_email, subject, body)
 
-
-async def send_client_verification_complete_email(
-    recipient_email: str,
-    lawyer_name: str,
-    contract_title: str,
-) -> bool:
+async def send_client_verification_complete_email(recipient_email: str, lawyer_name: str, contract_title: str) -> bool:
     subject = "Contract Verification Complete"
     body = (
         f"Hello,\n\n"
@@ -284,12 +263,7 @@ async def send_client_verification_complete_email(
     )
     return await _send_email(recipient_email, subject, body)
 
-
-async def send_sla_refund_email(
-    recipient_email: str,
-    contract_title: str,
-    credits: int,
-) -> bool:
+async def send_sla_refund_email(recipient_email: str, contract_title: str, credits: int) -> bool:
     subject = "Refund Processed - Verification Timeout"
     body = (
         f"Hello,\n\n"
@@ -301,11 +275,6 @@ async def send_sla_refund_email(
     return await _send_email(recipient_email, subject, body)
 
 
-# ──────────────────────────────────────────────────────────
-# CLI helpers
-#   python -m app.services.email_service --auth
-#   python -m app.services.email_service --test you@example.com
-# ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
