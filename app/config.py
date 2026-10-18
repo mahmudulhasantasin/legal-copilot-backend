@@ -16,8 +16,14 @@ class Settings(BaseSettings):
     QDRANT_API_KEY: str = os.getenv("QDRANT_API_KEY", "")
     
     # ✅ নতুন ১০২৪ ডাইমেনশন কালেকশন এবং মডেলের নাম ডিফল্ট হিসেবে বসানো হলো
-    QDRANT_COLLECTION_NAME: str = os.getenv("QDRANT_COLLECTION_NAME", "bd_laws_v2")
-    EMBED_MODEL: str = os.getenv("EMBED_MODEL", "intfloat/multilingual-e5-large")
+    #QDRANT_COLLECTION_NAME: str = os.getenv("QDRANT_COLLECTION_NAME", "bd_laws_v2")
+    #EMBED_MODEL: str = os.getenv("EMBED_MODEL", "intfloat/multilingual-e5-large")
+
+    # app/config.py ফাইলে এই দুটি লাইন খুঁজে নিন এবং পরিবর্তন করুন:
+
+    # ✅ নতুন ছোট মডেল এবং কালেকশনের নাম
+    QDRANT_COLLECTION_NAME: str = os.getenv("QDRANT_COLLECTION_NAME", "bd_laws_e5_small")
+    EMBED_MODEL: str = os.getenv("EMBED_MODEL", "intfloat/multilingual-e5-small")
 
     # Security & JWT Configuration
     SECRET_KEY: str = os.getenv("SECRET_KEY", "temporary-fallback-secret-key-change-in-env")

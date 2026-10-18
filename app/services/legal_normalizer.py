@@ -85,4 +85,5 @@ def normalize_section(section_text: str) -> str:
     
     # Keep only digit, letter, bracket
     matches = re.findall(r'[\da-zA-Z\u0980-\u09FF\(\)]+', text)
-    return "".join(matches)
+    # "".join(matches) এর বদলে:
+    return "-".join(matches) # "Section 2 and 3" হলে "2-3" হবে
