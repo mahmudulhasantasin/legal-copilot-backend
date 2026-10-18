@@ -99,3 +99,4 @@ create_admin.py
 update_db.py
 setup_qdrant.py
 test.py
+data/laws/all_bangladesh_laws.json
