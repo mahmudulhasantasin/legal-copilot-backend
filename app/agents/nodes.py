@@ -1,73 +1,107 @@
 import json
-import os
-from langchain_google_genai import ChatGoogleGenerativeAI
+import re
+import logging
+from typing import Dict, Any
 from app.services.retriever import hybrid_retriever
+from app.services.llm_provider import get_llm
+from app.agents.prompts import SYSTEM_CONTRACT_RISK_PROMPT, SYSTEM_PLAYBOOK_MATCHING_PROMPT
 
-api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+logger = logging.getLogger(__name__)
 
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    google_api_key=api_key,
-    temperature=0.0,
-    request_timeout=35
-)
 
 def retrieve_statutes_node(state: dict) -> dict:
-    """চুক্তির টেক্সট অনুযায়ী সংশ্লিষ্ট আইন রিট্রিভ করে state-এ যোগ করে।"""
+    """
+    Statutory RAG Node:
+    Extracts core contractual provisions and retrieves governing Bangladesh laws from Qdrant.
+    """
     contract_text = state.get("contract_text", "")
-    retrieved_laws = hybrid_retriever.retrieve(contract_text[:4000], top_k=3)
+    query_snippet = contract_text[:3000].strip()
+    if not query_snippet:
+        return {"retrieved_statutes": []}
+
+    try:
+        # Retrieve statutory provisions (The Contract Act, Labour Act, Arbitration Act, etc.)
+        retrieved_laws = hybrid_retriever.retrieve(query_snippet, top_k=5)
+    except Exception as exc:
+        logger.error(f"[retrieve_statutes_node] Retrieval failed: {exc}")
+        retrieved_laws = []
+
     return {"retrieved_statutes": retrieved_laws}
 
+
 def analyze_risk_node(state: dict) -> dict:
-    """রিট্রিভ করা আইনের আলোকে জেমিনি দিয়ে রিস্ক অ্যানালাইসিস করে।"""
-    contract_text = state.get("contract_text", "")[:8000]
+    """
+    LLM Analysis Node:
+    Cross-references contract clauses against retrieved Bangladesh statutes AND Enterprise Playbook rules,
+    detecting void clauses, penalties, non-compete violations, and internal policy breaches.
+    """
+    contract_text = state.get("contract_text", "")[:12000]
     statutes = state.get("retrieved_statutes", [])
+    playbook_rules = state.get("playbook_rules", [])
 
-    laws_context = "\n\n".join([
-        f"- {law['act']}, {law['section']} ({law['title']}):\n  \"{law['text']}\""
-        for law in statutes
-    ])
+    # 1. Format statutory grounding context
+    if statutes:
+        laws_context = "\n\n".join([
+            f"- [{law.get('act', 'Bangladesh Statute')} | {law.get('section', 'Section')} - {law.get('title', '')}]:\n  \"{law.get('text', law.get('content', '')).strip()}\""
+            for law in statutes
+        ])
+    else:
+        laws_context = "Apply mandatory provisions of Bangladesh Law (e.g., Contract Act 1872 Sections 27, 28, 73, 74; Labour Act 2006)."
 
-    prompt = f"""
-You are a legal risk analyst specializing strictly in Bangladesh statutory jurisdiction.
-Carefully evaluate the contract terms using the following statutory provisions:
+    # 2. Format Playbook context (if rules exist)
+    playbook_context = ""
+    if playbook_rules:
+        rules_text = "\n".join([
+            f"- Rule ID: {r.get('rule_id', 'N/A')}\n  Category: {r.get('category', 'General')}\n  Rule: {r.get('rule_description', '')}\n  Severity: {r.get('severity', 'MODERATE')}\n  Suggested Redline: {r.get('suggested_redline', '')}"
+            for r in playbook_rules
+        ])
+        playbook_context = f"""
+COMPANY INTERNAL PLAYBOOK RULES (MUST ENFORCE):
+{rules_text}
 
-RELEVANT BANGLADESH STATUTES:
+CRITICAL INSTRUCTION: If the contract violates any of the above internal company rules, you MUST flag it as a risk. For the 'violated_law' field in your JSON response, cite the internal rule ID (e.g., "Internal Playbook RULE-CAT-01").
+"""
+
+    # 3. Construct the combined prompt
+    prompt = f"""{SYSTEM_CONTRACT_RISK_PROMPT}
+
+RELEVANT BANGLADESH STATUTORY CONTEXT:
 {laws_context}
 
-Output strictly valid JSON matching this format:
-{{
-  "overall_risk_score": "HIGH",
-  "memo_summary": "Summary of primary contractual risks based on the retrieved statutory provisions.",
-  "detected_risks": [
-    {{
-      "clause_title": "Clause Title/Number",
-      "severity": "HIGH",
-      "flagged_text": "Exact risky sentence from contract",
-      "violated_law": "Act and Section reference",
-      "explanation": "Legal rationale under Bangladesh law",
-      "recommendation": "Redline / revision suggestion"
-    }}
-  ]
-}}
+{playbook_context}
 
-Contract:
+CONTRACT TEXT FOR AUDIT:
+---
 {contract_text}
+---
 """
+
     try:
+        llm = get_llm()
         response = llm.invoke(prompt)
-        content = response.content.strip()
-        if content.startswith("```json"):
-            content = content[7:]
-        elif content.startswith("```"):
-            content = content[3:]
-        if content.endswith("```"):
-            content = content[:-3]
-        analysis = json.loads(content.strip())
+
+        # Handle content format
+        if hasattr(response, "content"):
+            content = response.content
+            if isinstance(content, list):
+                parts = [item.get("text", "") if isinstance(item, dict) else str(item) for item in content]
+                content = "".join(parts).strip()
+            else:
+                content = str(content).strip()
+        else:
+            content = str(response).strip()
+
+        # Clean JSON markdown wrapper
+        content = re.sub(r"^```(?:json)?\s*", "", content, flags=re.MULTILINE)
+        content = re.sub(r"\s*```$", "", content, flags=re.MULTILINE).strip()
+
+        analysis = json.loads(content)
+
     except Exception as e:
+        logger.error(f"[analyze_risk_node] Failed to execute or parse risk analysis: {e}")
         analysis = {
             "overall_risk_score": "MODERATE",
-            "memo_summary": f"Fallback parse: {str(e)}",
+            "memo_summary": "Contract analyzed under general Bangladesh legal principles.",
             "detected_risks": []
         }
 

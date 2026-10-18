@@ -1,52 +1,137 @@
-import uvicorn
+import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from app.core.database import Base, engine
-from app.api.auth import router as auth_router
-from app.api.chat import router as chat_router
-from app.api.contract import router as contract_router
-from app.api.lawyer import router as lawyer_router
+# ⚠️ CRITICAL: Import all models FIRST so SQLAlchemy resolves all relationships
+import app.models  # noqa: F401
 
-import os
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-
-
-
-
-
-# Automatic SQL Database Tables Creation
-Base.metadata.create_all(bind=engine)
-
-app = FastAPI(
-    title="Legal Copilot & ContractMind Engine Backend",
-    description="Production-Ready AI-Powered Legal Assistant for Bangladesh Jurisdiction",
-    version="1.0.0"
+# ── Import Routers ──
+from app.api import (
+    auth,
+    admin,
+    company,
+    payments,
+    lawyer,
+    chat,
+    contract,
+    settings,
 )
 
-# CORS Middleware Setup
+# ── Import Cron Scheduler ──
+from app.services.cron import start_scheduler, shutdown_scheduler
+
+# ── Configure Logging ──
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+
+# ──────────────────────────────────────────────────────────
+# LIFESPAN EVENTS (Startup & Shutdown)
+# ──────────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Handles startup and shutdown events.
+    Starts the background scheduler for HITL SLAs and payment expiries.
+    """
+    logger.info("Starting ContractMind API...")
+    start_scheduler()
+    
+    yield  # Application is running
+    
+    logger.info("Shutting down ContractMind API...")
+    shutdown_scheduler()
+
+
+# ──────────────────────────────────────────────────────────
+# APP INITIALIZATION
+# ──────────────────────────────────────────────────────────
+
+app = FastAPI(
+    title="ContractMind API",
+    description="AI-powered Legal Assistant & Contract Auditor for Bangladesh Law",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/api/docs",       # Swagger UI
+    redoc_url="/api/redoc",     # ReDoc
+    openapi_url="/api/openapi.json"
+)
+
+
+# ──────────────────────────────────────────────────────────
+# MIDDLEWARE (CORS)
+# ──────────────────────────────────────────────────────────
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",    # React/Next.js default
+        "http://localhost:5173",    # Vite default
+        "https://your-production-domain.com", # Update before going live
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Router Registration
-app.include_router(auth_router)
-app.include_router(chat_router)
-app.include_router(contract_router)
-app.include_router(lawyer_router)
 
-@app.get("/")
-def root_health_check():
+# ──────────────────────────────────────────────────────────
+# REGISTER ROUTERS
+# ──────────────────────────────────────────────────────────
+
+# Authentication & Onboarding
+app.include_router(auth.router)
+
+# System Admin
+app.include_router(admin.router)
+
+# Enterprise Admin
+app.include_router(company.router)
+
+# Payments (bKash Manual Flow)
+app.include_router(payments.router)
+
+# Lawyer HITL (Offers, Submissions, Withdrawals)
+app.include_router(lawyer.router)
+
+# Legal Chat (RAG)
+app.include_router(chat.router)
+
+# Contract Audit (LangGraph)
+app.include_router(contract.router)
+
+# User Settings
+app.include_router(settings.router)
+
+
+# ──────────────────────────────────────────────────────────
+# SYSTEM HEALTH & ROOT
+# ──────────────────────────────────────────────────────────
+
+@app.get("/", tags=["System"])
+async def root():
     return {
+        "app": "ContractMind API",
         "status": "online",
-        "engine": "Legal Copilot & ContractMind BD Engine",
-        "version": "1.0.0"
+        "docs": "/api/docs"
     }
 
-if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+@app.get("/health", tags=["System"])
+async def health_check():
+    """
+    Basic health check. 
+    In a full production setup, this should also ping the DB and Qdrant.
+    """
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "healthy",
+            "service": "ContractMind API"
+        }
+    )

@@ -1,192 +1,404 @@
-import json
-from io import BytesIO
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Response
-from pypdf import PdfReader
-from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
+import os
+import uuid
+import logging
+from datetime import datetime, timezone, timedelta
+from typing import List, Optional, Dict, Any
+from decimal import Decimal
 
-# ReportLab Imports for Legal PDF Formatting
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from pydantic import BaseModel, Field
+from sqlalchemy import select, desc, or_
+from sqlalchemy.ext.asyncio import AsyncSession
+from supabase import create_client, Client
 
+from app.config import settings
 from app.core.database import get_db
-from app.core.security import get_current_user
-from app.models.user import User, SubscriptionTier, UserRole
-from app.models.memo import ContractMemo
-from app.agents.contract_graph import analyze_contract_text as analyze_contract_risk
+# ✅ FIX 1: refund_credits ইমপোর্ট করা হলো
+from app.core.security import get_current_user, check_and_deduct_credits, refund_credits
+from app.core.pricing import get_audit_cost, get_service_cost, get_lawyer_verification_split
+from app.models.user import User, UserRole, CreditTxType
+from app.models.memo import Contract, ContractMemo, RiskLevel, HITLStatus
+from app.models.playbook import CompanyPlaybook
+from app.services.ingestion import extract_text_from_file
+from app.agents.contract_graph import analyze_contract_risk_async
+from app.services.lawyer_assignment import generate_initial_offer
 
-router = APIRouter(prefix="/api/contract", tags=["Contract Analysis"])
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/contracts", tags=["Contract Audit & HITL"])
+
+# ──────────────────────────────────────────────────────────
+# SUPABASE SETUP
+# ──────────────────────────────────────────────────────────
+SUPABASE_URL = getattr(settings, "SUPABASE_URL", "")
+SUPABASE_KEY = getattr(settings, "SUPABASE_SERVICE_KEY", "")
+BUCKET_NAME = "contracts"
+
+def get_supabase() -> Client:
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        logger.warning("Supabase credentials missing. File uploads will fail.")
+        return None
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
-# --- PDF Generator Function ---
-def build_legal_memo_pdf(memo: ContractMemo, lawyer_name: str = "Unassigned") -> bytes:
-    """মেমোর ডেটা প্রসেস করে প্রফেশনাল লিগ্যাল অডিট PDF রিটার্ন করে।"""
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=letter,
-        rightMargin=40,
-        leftMargin=40,
-        topMargin=40,
-        bottomMargin=40
-    )
+# ──────────────────────────────────────────────────────────
+# SCHEMAS
+# ──────────────────────────────────────────────────────────
 
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'DocTitle',
-        parent=styles['Heading1'],
-        fontSize=20,
-        leading=24,
-        textColor=colors.HexColor("#1A365D"),
-        spaceAfter=6
-    )
-    subtitle_style = ParagraphStyle(
-        'DocSubtitle',
-        parent=styles['Normal'],
-        fontSize=10,
-        textColor=colors.HexColor("#4A5568"),
-        spaceAfter=15
-    )
-    h2_style = ParagraphStyle(
-        'H2Style',
-        parent=styles['Heading2'],
-        fontSize=13,
-        leading=16,
-        textColor=colors.HexColor("#2B6CB0"),
-        spaceBefore=12,
-        spaceAfter=6
-    )
-    body_style = ParagraphStyle(
-        'BodyDark',
-        parent=styles['Normal'],
-        fontSize=10,
-        leading=14,
-        textColor=colors.HexColor("#2D3748")
-    )
-    risk_title_style = ParagraphStyle(
-        'RiskTitle',
-        parent=styles['Normal'],
-        fontSize=10,
-        leading=13,
-        fontName="Helvetica-Bold",
-        textColor=colors.HexColor("#9B2C2C")
-    )
+class ClauseAnalysisItem(BaseModel):
+    clause_number: str
+    clause_title: str
+    risk_level: str
+    original_text: str
+    statute_reference: Optional[str] = None
+    legal_explanation: Optional[str] = None
+    proposed_safe_redline: Optional[str] = None
+    is_compliant: bool = False
 
-    story = []
+class ContractMemoResponse(BaseModel):
+    memo_id: int
+    contract_id: int
+    title: str
+    overall_risk: RiskLevel
+    risk_score: int
+    executive_summary: str
+    counts: Dict[str, int]
+    clauses: List[ClauseAnalysisItem]
+    hitl_status: HITLStatus
+    lawyer_name: Optional[str] = None
+    lawyer_notes: Optional[str] = None
+    lawyer_signature: Optional[str] = None
+    completed_at: Optional[datetime] = None
 
-    # হেডার ও মেটাডাটা
-    story.append(Paragraph("CONTRACTMIND LEGAL AUDIT MEMORANDUM", title_style))
-    story.append(Paragraph(f"Generated on {datetime.utcnow().strftime('%B %d, %Y')} | Bangladesh Statutory Jurisdiction", subtitle_style))
-    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#2B6CB0"), spaceAfter=15))
+class RequestVerificationResponse(BaseModel):
+    status: str
+    memo_id: int
+    message: str
+    credits_deducted: int
 
-    # সামারি টেবিল
-    meta_data = [
-        [Paragraph("<b>Contract Document:</b>", body_style), Paragraph(memo.filename, body_style)],
-        [Paragraph("<b>Audit Status:</b>", body_style), Paragraph(memo.status, body_style)],
-        [Paragraph("<b>Overall Statutory Risk:</b>", body_style), Paragraph(f"<b>{memo.overall_risk_score}</b>", body_style)],
-        [Paragraph("<b>Reviewing Advocate:</b>", body_style), Paragraph(lawyer_name, body_style)],
-    ]
-    meta_table = Table(meta_data, colWidths=[150, 380])
-    meta_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#F7FAFC")),
-        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
-        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor("#CBD5E0")),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-    ]))
-    story.append(meta_table)
-    story.append(Spacer(1, 15))
 
-    # নির্বাহী সারাংশ
-    story.append(Paragraph("1. Executive Summary", h2_style))
-    story.append(Paragraph(memo.memo_summary or "No summary available.", body_style))
-    story.append(Spacer(1, 12))
+# ──────────────────────────────────────────────────────────
+# HELPERS
+# ──────────────────────────────────────────────────────────
 
-    # চিহ্নিত আইনি ঝুঁকি ও ধারা
-    story.append(Paragraph("2. Detected Statutory Risks & Unfair Terms", h2_style))
-    risks = json.loads(memo.risks_json) if memo.risks_json else []
+def _calculate_metrics(clauses: List[dict]) -> tuple[Dict[str, int], int, RiskLevel]:
+    high = sum(1 for c in clauses if str(c.get("risk_level", "")).lower() in ["high risk", "high"])
+    review = sum(1 for c in clauses if str(c.get("risk_level", "")).lower() in ["review needed", "moderate", "medium"])
+    compliant = sum(1 for c in clauses if c.get("is_compliant") or str(c.get("risk_level", "")).lower() in ["compliant", "low"])
 
-    if risks:
-        for idx, risk in enumerate(risks, start=1):
-            clause_header = f"{idx}. {risk.get('clause_title', 'Clause')} — [Severity: {risk.get('severity', 'MODERATE')}]"
-            story.append(Paragraph(clause_header, risk_title_style))
-            story.append(Paragraph(f"<b>Flagged Text:</b> <i>\"{risk.get('flagged_text', '')}\"</i>", body_style))
-            story.append(Paragraph(f"<b>Violated Provision:</b> {risk.get('violated_law', 'Statutory Provision')}", body_style))
-            story.append(Paragraph(f"<b>Legal Analysis:</b> {risk.get('explanation', '')}", body_style))
-            story.append(Paragraph(f"<b>Recommendation:</b> {risk.get('recommendation', '')}", body_style))
-            story.append(Spacer(1, 8))
+    total = max(len(clauses), 1)
+    score = min(100, int((high * 40 + review * 20) / total * 2.5))
+    score = max(score, 10 if total > 0 else 0)
+
+    if high > 0 or score >= 60:
+        overall = RiskLevel.HIGH
+    elif review > 0 or score >= 35:
+        overall = RiskLevel.MODERATE
     else:
-        story.append(Paragraph("No critical statutory risks detected.", body_style))
+        overall = RiskLevel.LOW
 
-    story.append(Spacer(1, 10))
-
-    # আইনজীবীর পর্যালোচনা ও মতামত
-    story.append(Paragraph("3. Legal Counsel Review & Redlining Notes", h2_style))
-    story.append(Paragraph(memo.lawyer_notes or "Pending final manual advocate observations.", body_style))
-    story.append(Spacer(1, 15))
-
-    # ডিজিটাল স্বাক্ষর বক্স
-    story.append(Paragraph("4. Digital Authentication & Execution", h2_style))
-    sig_text = memo.digital_signature or "NOT YET SIGNED"
-    reviewed_at_str = memo.reviewed_at.strftime('%Y-%m-%d %H:%M:%S UTC') if memo.reviewed_at else "N/A"
-
-    sig_data = [
-        [Paragraph("<b>Digital Signature:</b>", body_style), Paragraph(sig_text, body_style)],
-        [Paragraph("<b>Authentication Time:</b>", body_style), Paragraph(reviewed_at_str, body_style)]
-    ]
-    sig_table = Table(sig_data, colWidths=[150, 380])
-    sig_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#EDF2F7")),
-        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor("#CBD5E0")),
-        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-    ]))
-    story.append(sig_table)
-
-    doc.build(story)
-    buffer.seek(0)
-    return buffer.getvalue()
+    return {"high_risk": high, "review_needed": review, "compliant": compliant}, score, overall
 
 
-# --- Endpoint ---
-@router.get("/generate-doc/{memo_id}")
-async def generate_memo_document(
-    memo_id: int,
-    db: Session = Depends(get_db),
+async def _upload_to_supabase(file_bytes: bytes, filename: str, user_id: int) -> str:
+    """Uploads file to Supabase and returns the storage path."""
+    supabase = get_supabase()
+    if not supabase:
+        raise HTTPException(500, "Storage service is not configured.")
+
+    safe_name = f"u_{user_id}_{uuid.uuid4().hex[:8]}_{filename}"
+    file_path = safe_name
+
+    try:
+        res = supabase.storage.from_(BUCKET_NAME).upload(
+            path=file_path,
+            file=file_bytes,
+            file_options={"content-type": "application/pdf"}
+        )
+        return file_path
+    except Exception as e:
+        logger.error(f"[Supabase] Upload failed: {e}")
+        raise HTTPException(500, "Failed to upload document to secure storage.")
+
+
+# ──────────────────────────────────────────────────────────
+# ENDPOINTS
+# ──────────────────────────────────────────────────────────
+
+@router.post("/upload", response_model=ContractMemoResponse)
+async def upload_and_audit(
+    file: UploadFile = File(...),
+    title: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """মেমোর প্রফেশনাল লিগ্যাল PDF ডাউনলোড করার এন্ডপয়েন্ট।"""
-    memo = db.query(ContractMemo).filter(ContractMemo.id == memo_id).first()
-    if not memo:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Contract memo not found."
-        )
+    # 1. Validate File Type
+    allowed_types = [".pdf", ".docx", ".doc", ".png", ".jpg", ".jpeg"]
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in allowed_types:
+        raise HTTPException(400, f"Unsupported file format. Allowed: {', '.join(allowed_types)}")
 
-    # এক্সেস কন্ট্রোল: শুধু মেমোর মালিক, অ্যাডমিন অথবা রিভিউয়ার আইনজীবী ডাউনলোড করতে পারবে
-    if memo.user_id != current_user.id and current_user.role not in [UserRole.ADMIN, UserRole.LAWYER]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to download this legal document."
-        )
-
-    # আইনজীবী এসাইন করা থাকলে তার নাম ফেচ করা
-    lawyer_name = "Unassigned / AI Only"
-    if memo.lawyer_id:
-        lawyer = db.query(User).filter(User.id == memo.lawyer_id).first()
-        if lawyer:
-            lawyer_name = f"{lawyer.full_name} ({lawyer.bar_council_id or 'Advocate'})"
-
-    # PDF তৈরি
-    pdf_bytes = await run_in_threadpool(build_legal_memo_pdf, memo, lawyer_name)
-
-    filename = f"ContractMind_Memo_{memo.id}.pdf"
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    # 2. Deduct Credits (B2C or B2B pricing)
+    cost = get_audit_cost(current_user.role)
+    deduction = await check_and_deduct_credits(
+        user=current_user,
+        db=db,
+        cost=cost,
+        tx_type=CreditTxType.CONTRACT_AUDIT,
+        description=f"AI Audit: {file.filename[:30]}",
+        commit=False
     )
+
+    # 3. Read and Upload File
+    file_bytes = await file.read()
+    storage_path = await _upload_to_supabase(file_bytes, file.filename, current_user.id)
+
+    # 4. Extract Text
+    try:
+        raw_text = extract_text_from_file(file.filename, file_bytes)
+    except Exception as e:
+        logger.error(f"[Ingestion] Extraction failed: {e}")
+        raise HTTPException(400, "Could not read text from the uploaded file.")
+
+    if not raw_text.strip():
+        raise HTTPException(400, "The uploaded document contains no readable text.")
+
+    # 5. Fetch Enterprise Playbook
+    playbook_rules = []
+    if current_user.is_enterprise_user and current_user.enterprise_id:
+        pb = await db.scalar(
+            select(CompanyPlaybook).where(
+                CompanyPlaybook.enterprise_id == current_user.enterprise_id,
+                CompanyPlaybook.is_active == True
+            )
+        )
+        if pb and pb.rules_json:
+            playbook_rules = pb.rules_json
+
+    # 6. Run LangGraph Analysis
+    agent_output = await analyze_contract_risk_async(
+        contract_text=raw_text[:30000],
+        playbook_rules=playbook_rules
+    )
+
+    detected_risks = agent_output.get("detected_risks", [])
+    memo_summary = agent_output.get("memo_summary", "Contract analyzed successfully.")
+
+    # 7. Format Clauses
+    ui_clauses = []
+    for idx, risk in enumerate(detected_risks, start=1):
+        severity = str(risk.get("severity", "MODERATE")).upper()
+        is_comp = severity in ["LOW", "COMPLIANT"]
+        risk_label = "High Risk" if severity == "HIGH" else ("Review Needed" if severity in ["MODERATE", "MEDIUM"] else "Compliant")
+        
+        ui_clauses.append({
+            "clause_number": f"§ {idx}",
+            "clause_title": risk.get("clause_title", f"Clause {idx}"),
+            "risk_level": risk_label,
+            "original_text": risk.get("flagged_text", ""),
+            "statute_reference": risk.get("violated_law", "Bangladesh Law / Playbook"),
+            "legal_explanation": risk.get("explanation", "Review required."),
+            "proposed_safe_redline": risk.get("recommendation"),
+            "is_compliant": is_comp
+        })
+        
+    if not ui_clauses:
+        ui_clauses.append({
+            "clause_number": "§ 1",
+            "clause_title": "General Compliance",
+            "risk_level": "Compliant",
+            "original_text": "Document scanned.",
+            "statute_reference": "N/A",
+            "legal_explanation": "No risks detected.",
+            "is_compliant": True
+        })
+
+    counts, risk_score, risk_enum = _calculate_metrics(ui_clauses)
+
+    # 8. Save to Database
+    contract = Contract(
+        user_id=current_user.id,
+        enterprise_id=current_user.enterprise_id if current_user.is_enterprise_user else None,
+        title=title or file.filename,
+        original_filename=file.filename,
+        file_path=storage_path,
+        file_size_mb=round(len(file_bytes) / (1024 * 1024), 2),
+        file_mime_type=file.content_type
+    )
+    db.add(contract)
+    await db.flush()
+
+    memo = ContractMemo(
+        contract_id=contract.id,
+        overall_risk=risk_enum,
+        risk_score=risk_score,
+        executive_summary=memo_summary,
+        clauses_analysis=ui_clauses,
+        high_risk_count=counts["high_risk"],
+        moderate_risk_count=counts["review_needed"],
+        compliant_count=counts["compliant"],
+        hitl_status=HITLStatus.NOT_REQUESTED
+    )
+    db.add(memo)
+    
+    # 9. Commit
+    await db.commit()
+    await db.refresh(contract)
+    await db.refresh(memo)
+
+    return ContractMemoResponse(
+        memo_id=memo.id,
+        contract_id=contract.id,
+        title=contract.title,
+        overall_risk=memo.overall_risk,
+        risk_score=memo.risk_score,
+        executive_summary=memo.executive_summary,
+        counts=counts,
+        clauses=[ClauseAnalysisItem(**c) for c in memo.clauses_analysis],
+        hitl_status=memo.hitl_status
+    )
+
+
+@router.post("/{contract_id}/request-verification", response_model=RequestVerificationResponse)
+async def request_lawyer_verification(
+    contract_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # 1. Fetch Memo
+    memo = await db.scalar(
+        select(ContractMemo)
+        .join(Contract, ContractMemo.contract_id == Contract.id)
+        .where(
+            Contract.id == contract_id,
+            Contract.user_id == current_user.id
+        )
+    )
+    if not memo:
+        raise HTTPException(404, "Contract analysis not found.")
+    if memo.hitl_status != HITLStatus.NOT_REQUESTED:
+        raise HTTPException(400, f"Verification already requested. Status: {memo.hitl_status.value}")
+
+    # 2. Deduct Credits
+    split = get_lawyer_verification_split()
+    cost_credits = int(split["credits_to_deduct"])
+    
+    await check_and_deduct_credits(
+        user=current_user,
+        db=db,
+        cost=cost_credits,
+        tx_type=CreditTxType.LAWYER_REVIEW_FEE,
+        description=f"Lawyer Verification for Contract #{contract_id}",
+        reference_id=str(memo.id),
+        commit=False
+    )
+
+    # 3. Update Memo
+    now = datetime.now(timezone.utc)
+    memo.hitl_status = HITLStatus.QUEUED_FOR_LAWYER
+    memo.hitl_requested_at = now
+    memo.hitl_global_deadline = now + timedelta(hours=72)
+    memo.hitl_credits_paid = cost_credits
+    memo.fee_bdt = split["internal_bdt_value"]
+    memo.lawyer_payout_bdt = split["lawyer_payout_bdt"]
+    memo.platform_fee_bdt = split["platform_fee_bdt"]
+
+    # 4. Trigger Ranking Algorithm
+    await db.flush()
+    success = await generate_initial_offer(db, memo)
+    
+    if not success:
+        # ✅ FIX 2: ডাটাবেসে রিফান্ড প্রসেস করা হলো
+        await refund_credits(
+            db=db, 
+            user=current_user, 
+            amount=cost_credits, 
+            reason="No eligible lawyers available at this time.", 
+            reference_id=str(memo.id)
+        )
+        
+        memo.hitl_status = HITLStatus.REFUNDED
+        memo.refunded_at = now
+        memo.refund_reason = "No eligible lawyers available at this time."
+        await db.commit()
+        raise HTTPException(503, "No lawyers are currently available. Your credits have been refunded.")
+
+    await db.commit()
+
+    return RequestVerificationResponse(
+        status="success",
+        memo_id=memo.id,
+        message="Verification requested. A lawyer has been notified.",
+        credits_deducted=cost_credits
+    )
+
+
+@router.get("/history", response_model=List[dict])
+async def get_my_contracts(
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    stmt = select(Contract, ContractMemo).join(ContractMemo).where(Contract.user_id == current_user.id)
+    
+    if current_user.is_enterprise_user and current_user.enterprise_id:
+        stmt = select(Contract, ContractMemo).join(ContractMemo).where(
+            or_(
+                Contract.user_id == current_user.id,
+                Contract.enterprise_id == current_user.enterprise_id
+            )
+        )
+        
+    stmt = stmt.order_by(desc(Contract.created_at)).limit(limit).offset(offset)
+    rows = (await db.execute(stmt)).all()
+
+    return [
+        {
+            "contract_id": c.id,
+            "memo_id": m.id,
+            "title": c.title,
+            "overall_risk": m.overall_risk.value,
+            "risk_score": m.risk_score,
+            "hitl_status": m.hitl_status.value,
+            "created_at": c.created_at
+        }
+        for c, m in rows
+    ]
+
+
+@router.get("/{contract_id}/download")
+async def get_download_url(
+    contract_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Generates a 1-hour signed URL for the original OR lawyer-verified contract."""
+    result = await db.execute(
+        select(Contract, ContractMemo)
+        .outerjoin(ContractMemo, Contract.id == ContractMemo.contract_id)
+        .where(
+            Contract.id == contract_id,
+            Contract.user_id == current_user.id
+        )
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(404, "Contract not found.")
+    
+    contract, memo = row
+
+    # ✅ নতুন লজিক: লইয়ার ফাইনাল পিডিএফ দিলে সেটি ডাউনলোড হবে, নাহলে অরিজিনাল
+    file_to_download = contract.file_path
+    if memo and memo.signed_contract_path:
+        file_to_download = memo.signed_contract_path
+
+    supabase = get_supabase()
+    try:
+        res = supabase.storage.from_(BUCKET_NAME).create_signed_url(file_to_download, 3600)
+        return {
+            "download_url": res.get("signedURL") or res.get("signedUrl"),
+            "is_lawyer_verified": bool(memo and memo.signed_contract_path)
+        }
+    except Exception as e:
+        logger.error(f"[Supabase] Signed URL failed: {e}")
+        raise HTTPException(500, "Could not generate download link.")

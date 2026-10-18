@@ -2,34 +2,42 @@
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 pydantic>=2.8.0
+pydantic-settings>=2.3.0
 python-multipart>=0.0.9
 
-# Database & ORM (Supabase PostgreSQL via Session Pooler)
+# Database & ORM (Supabase PostgreSQL via asyncpg driver)
 SQLAlchemy>=2.0.30
-psycopg[binary]>=3.2.0
+asyncpg>=0.29.0
 
 # Authentication & Security
 python-jose[cryptography]>=3.3.0
-passlib[bcrypt]>=1.7.4
 bcrypt>=4.0.1
+email-validator>=2.2.0
+
+# Cloud Storage & Integrations
+supabase>=2.5.0
+google-api-python-client>=2.130.0
+google-auth-oauthlib>=1.2.0
+google-auth>=2.30.0
 
 # AI, LLM & LangChain Ecosystem
 google-genai>=1.0.0
 langchain-google-genai>=2.0.0
 langchain-core>=0.3.0
-langchain-community>=0.3.0
+langchain-groq>=0.1.0
+langchain-text-splitters>=0.2.0
 langgraph>=0.2.0
+groq>=0.9.0
 
-# Search & Hybrid RAG (Vector + Sparse BM25)
-chromadb>=0.5.0
-rank-bm25>=0.2.2
+# Vector Search, RAG & MCP
+qdrant-client>=1.9.0
+fastembed>=0.3.0
+mcp>=1.0.0
+duckduckgo-search>=6.0.0
 
-# Document Processing & PDF Export
+# Document Ingestion & Background Scheduler
 pypdf>=4.3.0
-reportlab>=4.2.0
-
-# Configuration & Utilities
+python-docx>=1.1.0
+apscheduler>=3.10.0
 python-dotenv>=1.0.1
 requests>=2.32.0
-
-email-validator>=2.2.0

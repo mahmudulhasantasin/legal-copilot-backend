@@ -1,108 +1,173 @@
-import re
-from typing import List, Dict, Any
-from rank_bm25 import BM25Okapi
+import asyncio
+import logging
+import inspect
+from typing import Any, Dict, List, Optional
+from qdrant_client import models
+from app.config import settings
 from app.services.vector_store import vector_manager
+from app.services.query_analyzer import analyze_query_dynamically
+from app.services.legal_normalizer import normalize_section, normalize_act, resolve_act
 
-# বাংলাদেশের মৌলিক সংবিধিবদ্ধ আইনের প্রাথমিক কর্পাস
-DEFAULT_BANGLADESH_LAWS = [
-    {
-        "id": "contract_act_sec_27",
-        "act": "The Contract Act, 1872",
-        "section": "Section 27",
-        "title": "Agreement in restraint of trade, void",
-        "text": "Every agreement by which any one is restrained from exercising a lawful profession, trade or business of any kind, is to that extent void. Exception allows restriction only on sale of goodwill."
-    },
-    {
-        "id": "contract_act_sec_28",
-        "act": "The Contract Act, 1872",
-        "section": "Section 28",
-        "title": "Agreements in restraint of legal proceedings, void",
-        "text": "Every agreement, by which any party thereto is restricted absolutely from enforcing his rights under or in respect of any contract, by the usual legal proceedings in the ordinary tribunals, is void."
-    },
-    {
-        "id": "contract_act_sec_74",
-        "act": "The Contract Act, 1872",
-        "section": "Section 74",
-        "title": "Compensation for breach of contract where penalty stipulated for",
-        "text": "When a contract has been broken, if a sum is named in the contract as penalty, the party complaining is entitled to receive reasonable compensation not exceeding the penalty amount."
-    },
-    {
-        "id": "labour_act_sec_26",
-        "act": "The Bangladesh Labour Act, 2006",
-        "section": "Section 26",
-        "title": "Termination of employment of permanent workers by notice",
-        "text": "Employment of a permanent worker may be terminated by 120 days notice for monthly rated workers or wages in lieu thereof, plus statutory compensation equal to 30 days wages per completed year of service."
-    },
-    {
-        "id": "labour_act_sec_100",
-        "act": "The Bangladesh Labour Act, 2006",
-        "section": "Section 100",
-        "title": "Daily working hours and overtime limit",
-        "text": "No adult worker shall ordinarily be required or allowed to work in an establishment for more than eight hours in any day, subject to a maximum of ten hours including overtime."
-    }
-]
+logger = logging.getLogger(__name__)
 
-class HybridRetriever:
-    def __init__(self, corpus: List[Dict[str, Any]] = None):
-        self.corpus = corpus or DEFAULT_BANGLADESH_LAWS
-        
-        # BM25 ইনডেক্সিং
-        self.tokenized_corpus = [
-            f"{doc['act']} {doc['section']} {doc['title']} {doc['text']}".lower().split()
-            for doc in self.corpus
-        ]
-        self.bm25 = BM25Okapi(self.tokenized_corpus)
-        
-        # ChromaDB ইনিশিয়ালাইজেশন
+MIN_DENSE_SCORE = 0.38  # এর নিচের সিমিলারিটি বাদ
+PATH_A_SCORE = 2.0       # ইউজার নিজে যে ধারা লিখেছেন: সবসময় ওপরে
+INFERRED_SCORE = 1.0     # এলএলএম-এর অনুমান করা ধারা: ডেনস সার্চেও মিললে তবেই শীর্ষে ওঠে (অনুমান ভুল হতে পারে)
+MIN_FILTERED_HITS = 2    # Act-ফিল্টার করা Path B এর চেয়ে কম দিলে আনফিল্টার্ড ফলব্যাক
+
+
+def _extract_nested_fields(payload: Dict[str, Any]) -> tuple:
+    meta = payload.get("metadata") or {}
+    act = meta.get("act") or payload.get("act") or "Bangladesh Statute"
+    sec = meta.get("section") or payload.get("section") or ""
+    title = meta.get("title") or payload.get("title") or ""
+    text = payload.get("text") or payload.get("content") or meta.get("text") or ""
+    return str(act).strip(), str(sec).strip(), str(title).strip(), str(text).strip()
+
+
+def _doc_key(payload: Dict[str, Any], act: str, sec: str) -> str:
+    """'Section ২৬' ও 'Section 26' একই ডকুমেন্ট হিসেবে ধরা হবে।"""
+    meta = payload.get("metadata") or {}
+    act_key = meta.get("act_norm") or normalize_act(act) or act.lower()
+    sec_key = meta.get("section_norm") or normalize_section(sec) or sec.lower()
+    return f"{act_key}::{sec_key}"
+
+
+def _payload_of(item) -> Dict[str, Any]:
+    if hasattr(item, "payload"):
+        return item.payload or {}
+    if hasattr(item, "model_dump"):
+        return item.model_dump().get("payload") or {}
+    if isinstance(item, dict):
+        return item.get("payload") or item.get("metadata") or item
+    return {}
+
+
+class ProductionHybridRetriever:
+    def __init__(self):
+        self.collection_name = settings.QDRANT_COLLECTION_NAME
+        self.client = vector_manager.client
+
+    # ---------------- Path A ----------------
+    def _targeted_lookup(self, act: Optional[str], sections: List[str], limit: int = 12,
+                         score: float = PATH_A_SCORE) -> List[tuple]:
+        act_norm = resolve_act(act)   # শুধু চেনা Act হলে মান পাবে, নইলে None
+        secs = []
+        for s in sections[:6]:
+            n = normalize_section(s)
+            if n and n not in secs:
+                secs.append(n)
+
+        if not secs:
+            return []
+        if not act_norm:
+            # Act চেনা না গেলে "Section 26" সব আইন থেকে আসবে -> নয়েজ। তাই Path A বাদ।
+            logger.warning(f"[targeted_lookup] Unknown act '{act}', skipping Path A")
+            return []
+
         try:
-            if vector_manager.collection.count() == 0:
-                vector_manager.add_statutes(self.corpus)
-        except Exception:
-            pass
+            points, _ = self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=models.Filter(must=[
+                    models.FieldCondition(key="metadata.act_norm", match=models.MatchValue(value=act_norm)),
+                    models.FieldCondition(key="metadata.section_norm", match=models.MatchAny(any=secs)),
+                ]),
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+            )
+            logger.info(f"[targeted_lookup] act={act_norm} sections={secs} -> {len(points)} hits")
+            return [(p, score) for p in points]
+        except Exception as e:
+            logger.error(f"[targeted_lookup] failed: {e}")
+            return []
 
-    def exact_section_lookup(self, query: str) -> List[Dict[str, Any]]:
-        """যদি কুয়েরিতে সরাসরি 'Section 27' বা 'Labour Act' থাকে তবে সরাসরি এক্সাক্ট ম্যাচ রিট্রিভ করে।"""
-        matches = []
-        for doc in self.corpus:
-            sec_num = re.search(r"section\s*(\d+)", doc["section"], re.IGNORECASE)
-            if sec_num and re.search(rf"\bsection\s*{sec_num.group(1)}\b", query, re.IGNORECASE):
-                matches.append(doc)
-        return matches
+    # ---------------- Path B ----------------
+    def _run_dense(self, search_text: str, limit: int, q_filter, act_norm: Optional[str]):
+        sig = inspect.signature(vector_manager.similarity_search)
+        if q_filter is not None and "query_filter" in sig.parameters:
+            return vector_manager.similarity_search(search_text, limit=limit, query_filter=q_filter)
+        if q_filter is not None and "filter" in sig.parameters:
+            return vector_manager.similarity_search(search_text, limit=limit, filter=q_filter)
+        hits = vector_manager.similarity_search(search_text, limit=limit)
+        if act_norm:  # ফিল্টার সাপোর্ট নেই -> পাইথনে ফিল্টার
+            hits = [
+                h for h in hits
+                if (_payload_of(h).get("metadata") or {}).get("act_norm") == act_norm
+            ]
+        return hits
 
-    def retrieve(self, query: str, top_k: int = 3, rrf_k: int = 60) -> List[Dict[str, Any]]:
-        """RRF (Reciprocal Rank Fusion) অ্যালগরিদম ব্যবহার করে BM25 + Vector সার্চ একত্রিত করে।"""
-        # ১. Exact Lookup
-        exact_matches = self.exact_section_lookup(query)
-        if exact_matches:
-            return exact_matches[:top_k]
+    def _dense_semantic_search(self, search_text: str, act: Optional[str], limit: int = 6) -> List[tuple]:
+        act_norm = resolve_act(act)
+        q_filter = None
+        if act_norm:
+            q_filter = models.Filter(must=[
+                models.FieldCondition(key="metadata.act_norm", match=models.MatchValue(value=act_norm))
+            ])
 
-        # ২. BM25 Search
-        query_tokens = query.lower().split()
-        bm25_scores = self.bm25.get_scores(query_tokens)
-        bm25_ranked_indices = sorted(range(len(bm25_scores)), key=lambda i: bm25_scores[i], reverse=True)
+        try:
+            hits = self._run_dense(search_text, limit, q_filter, act_norm)
+            # এলএলএম ভুল Act ধরলে রিকল যেন শূন্য না হয়: আনফিল্টার্ড ফলব্যাক
+            if act_norm and len(hits) < MIN_FILTERED_HITS:
+                logger.info(f"[dense] only {len(hits)} hits under act={act_norm}; falling back to unfiltered")
+                hits = self._run_dense(search_text, limit, None, None)
+        except Exception as e:
+            logger.error(f"[dense_semantic_search] failed: {e}")
+            return []
 
-        # ৩. Vector Search
-        vector_results = vector_manager.similarity_search(query, top_k=top_k)
+        results = []
+        for h in hits:
+            score = h.get("score") if isinstance(h, dict) else getattr(h, "score", None)
+            score = 0.8 if score is None else float(score)
+            if score >= MIN_DENSE_SCORE:
+                results.append((h, score))
+        return results
 
-        # ৪. RRF স্কোরিং
-        doc_scores = {}
-        for rank, idx in enumerate(bm25_ranked_indices[:5]):
-            doc_id = self.corpus[idx]["id"]
-            doc_scores[doc_id] = doc_scores.get(doc_id, 0) + (1.0 / (rrf_k + rank + 1))
+    # ---------------- Merge ----------------
+    def retrieve(self, query: str, history: list = None, llm_instance=None, top_k: int = 5) -> List[Dict[str, Any]]:
+        # হিস্ট্রি সহ query_analyzer কল করা হচ্ছে
+        analysis = analyze_query_dynamically(query, history=history, llm_instance=llm_instance)
+        explicit = analysis.explicit_sections or []
+        explicit_norm = {normalize_section(s) for s in explicit}
+        inferred = [s for s in (analysis.inferred_sections or []) if normalize_section(s) not in explicit_norm]
 
-        for rank, v_doc in enumerate(vector_results):
-            doc_id = v_doc["id"]
-            doc_scores[doc_id] = doc_scores.get(doc_id, 0) + (1.0 / (rrf_k + rank + 1))
+        # মাল্টি-অ্যাক্ট সাপোর্ট: Query Analyzer থেকে আসা লিস্ট ব্যবহার করা হলো
+        acts_to_search = getattr(analysis, "detected_acts", [])
+        if not acts_to_search:
+            acts_to_search = [None]  # কোনো আইন ডিটেক্ট না হলে আনফিল্টার্ড ডেনস সার্চের জন্য অন্তত একবার লুপ চলবে
 
-        # সর্বোচ্চ স্কোরের ভিত্তিতে সাজানো
-        sorted_doc_ids = sorted(doc_scores.keys(), key=lambda d_id: doc_scores[d_id], reverse=True)
+        merged: Dict[str, Dict[str, Any]] = {}
+        
+        # ডিটেক্ট করা প্রতিটি আইনের জন্য লুপ চলবে
+        for act in acts_to_search:
+            # ইউজারের নিজের লেখা ধারা বেশি ওজন পায়; এলএলএম-অনুমানকৃত ধারা কম
+            path_a = (self._targeted_lookup(act, explicit, score=PATH_A_SCORE)
+                      + self._targeted_lookup(act, inferred, score=INFERRED_SCORE))
+            path_b = self._dense_semantic_search(analysis.optimized_query, act, limit=top_k + 2)
 
-        final_docs = []
-        for d_id in sorted_doc_ids[:top_k]:
-            match = next((d for d in self.corpus if d["id"] == d_id), None)
-            if match:
-                final_docs.append(match)
+            for source, results in (("A", path_a), ("B", path_b)):
+                for item, score in results:
+                    payload = _payload_of(item)
+                    d_act, d_sec, title, text = _extract_nested_fields(payload)
+                    if not text:
+                        continue
+                    key = _doc_key(payload, d_act, d_sec)
+                    if key in merged:
+                        merged[key]["score"] += score
+                        if source not in merged[key]["paths"]:
+                            merged[key]["paths"].append(source)
+                    else:
+                        merged[key] = {
+                            "id": key, "act": d_act, "section": d_sec, "title": title,
+                            "text": text, "content": text, "metadata": payload,
+                            "score": score, "paths": [source],
+                        }
 
-        return final_docs or self.corpus[:top_k]
+        return sorted(merged.values(), key=lambda x: x["score"], reverse=True)[:top_k]
 
-hybrid_retriever = HybridRetriever()
+    async def aretrieve(self, query: str, history: list = None, llm_instance=None, top_k: int = 5):
+        """ব্লকিং Qdrant/LLM কল ইভেন্ট লুপ আটকাবে না।"""
+        return await asyncio.to_thread(self.retrieve, query, history, llm_instance, top_k)
+
+
+hybrid_retriever = ProductionHybridRetriever()

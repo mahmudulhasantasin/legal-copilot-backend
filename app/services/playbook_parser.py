@@ -1,0 +1,79 @@
+import json
+import re
+from typing import List, Dict, Any
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_google_genai import ChatGoogleGenerativeAI
+from app.config import settings
+from app.services.ingestion import doc_processor, extract_text_from_file
+
+
+def _clean_llm_json(content: str) -> str:
+    """Strips Markdown fences and extracts raw JSON string."""
+    cleaned = content.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\n?", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\n?```$", "", cleaned)
+    return cleaned.strip()
+
+
+async def extract_playbook_text(filename: str, content: bytes) -> str:
+    """
+    Reuses ingestion.py logic to parse text from digital/scanned PDFs, DOCX, and text files.
+    """
+    raw_text = extract_text_from_file(filename=filename, content=content)
+    return raw_text.strip()
+
+
+async def parse_playbook_to_rules(raw_text: str) -> List[Dict[str, Any]]:
+    """
+    Transforms raw policy text into structured compliance rules using Gemini LLM.
+    """
+    if not raw_text:
+        return []
+
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-1.5-flash",
+        google_api_key=settings.GEMINI_API_KEY,
+        temperature=0.0
+    )
+
+    prompt = ChatPromptTemplate.from_messages([
+        (
+            "system",
+            """You are a Legal Policy Engineer. Analyze the internal corporate policy/playbook document provided.
+Extract all explicit contract rules, operational policies, liability caps, governing laws, and payment guidelines.
+
+Output MUST strictly be a valid JSON array of objects conforming to this schema:
+[
+  {{
+    "rule_id": "RULE-CAT-01",
+    "category": "Payment | Liability | Termination | Governing Law | Confidentiality | General",
+    "rule_description": "Clear statement of what is allowed or prohibited",
+    "severity": "LOW | MODERATE | HIGH | CRITICAL",
+    "suggested_redline": "Standard replacement clause if violated"
+  }}
+]
+
+Rules:
+1. Return ONLY the valid JSON array without commentary or explanation.
+2. Ensure every rule contains actionable guidance for legal audits.
+3. If no clear rules are identified, return an empty array []."""
+        ),
+        ("human", "Company Policy Text:\n\n{text}")
+    ])
+
+    chain = prompt | llm
+
+    # Limit input size to prevent context overflow while keeping core policies
+    truncated_text = raw_text[:25000]
+    response = await chain.ainvoke({"text": truncated_text})
+
+    cleaned_json = _clean_llm_json(str(response.content))
+    try:
+        rules = json.loads(cleaned_json)
+        if isinstance(rules, list):
+            return rules
+        return []
+    except json.JSONDecodeError:
+        print(f"[ERROR] Failed to parse LLM output as JSON: {cleaned_json}")
+        return []

@@ -1,0 +1,334 @@
+# app/services/email_service.py
+"""
+Email delivery for ContractMind.
+
+Transport backends (env: EMAIL_BACKEND):
+  - "gmail_api" (default): Gmail API over HTTPS (port 443).
+                           Works on hosts that block SMTP ports (465/587).
+  - "smtp": classic SMTP (465 implicit TLS / other STARTTLS).
+
+Gmail API auth uses OAuth 2.0. One-time setup:
+    python -m app.services.email_service --auth
+This writes token.json. On a headless server, generate token.json locally first,
+then ship it with the code and set GMAIL_HEADLESS=1.
+
+If every delivery attempt fails, the demo fallback logs the email to the
+terminal so the local flow (OTP, etc.) can still be tested.
+"""
+
+import os
+import sys
+import time
+import base64
+import asyncio
+import logging
+import smtplib
+import threading
+from email.message import EmailMessage
+
+from dotenv import load_dotenv
+
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+
+load_dotenv()
+logger = logging.getLogger(__name__)
+
+
+# ──────────────────────────────────────────────────────────
+# CONFIG
+# ──────────────────────────────────────────────────────────
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "gmail_api").lower()   # gmail_api | smtp
+
+# ── Gmail API ──
+GMAIL_SCOPES           = ["https://www.googleapis.com/auth/gmail.send"]
+GMAIL_CREDENTIALS_FILE = os.getenv("GMAIL_CREDENTIALS_FILE", "credentials.json")
+GMAIL_TOKEN_FILE       = os.getenv("GMAIL_TOKEN_FILE", "token.json")
+GMAIL_SENDER           = os.getenv("GMAIL_SENDER", os.getenv("SMTP_USER", ""))
+GMAIL_HEADLESS         = os.getenv("GMAIL_HEADLESS", "0") == "1"
+
+# ── SMTP (optional backend) ──
+SMTP_HOST     = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT     = int(os.getenv("SMTP_PORT", "465"))
+SMTP_USER     = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+
+
+# ──────────────────────────────────────────────────────────
+# GMAIL API BACKEND
+# ──────────────────────────────────────────────────────────
+_gmail_lock: threading.Lock = threading.Lock()
+_gmail_service = None
+
+
+def _load_gmail_service():
+    """Build (and cache) the Gmail API client. Blocking — call inside a thread."""
+    global _gmail_service
+    if _gmail_service is not None:
+        return _gmail_service
+
+    with _gmail_lock:
+        if _gmail_service is not None:              # double-checked locking
+            return _gmail_service
+
+        creds = None
+        if os.path.exists(GMAIL_TOKEN_FILE):
+            creds = Credentials.from_authorized_user_file(GMAIL_TOKEN_FILE, GMAIL_SCOPES)
+
+        # Refresh an expired token, or run the interactive flow once.
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                try:
+                    creds.refresh(Request())
+                    logger.info("[GMAIL AUTH] Access token refreshed.")
+                except Exception as e:
+                    logger.error(f"[GMAIL AUTH] Refresh failed: {e}")
+                    creds = None
+
+            if not creds:
+                if GMAIL_HEADLESS:
+                    raise RuntimeError(
+                        f"No valid {GMAIL_TOKEN_FILE} and GMAIL_HEADLESS=1. "
+                        "Generate token.json once on a machine with a browser "
+                        "and copy it to this host."
+                    )
+                if not os.path.exists(GMAIL_CREDENTIALS_FILE):
+                    raise FileNotFoundError(
+                        f"Missing {GMAIL_CREDENTIALS_FILE}. Download OAuth client JSON "
+                        "from Google Cloud Console (Desktop app type)."
+                    )
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    GMAIL_CREDENTIALS_FILE, GMAIL_SCOPES
+                )
+                creds = flow.run_local_server(port=0)   # opens browser
+
+            with open(GMAIL_TOKEN_FILE, "w") as f:
+                f.write(creds.to_json())
+
+        _gmail_service = build("gmail", "v1", credentials=creds, cache_discovery=False)
+        logger.info("[GMAIL AUTH] Service ready.")
+        return _gmail_service
+
+
+def _send_via_gmail_api_sync(message: EmailMessage, max_attempts: int = 3) -> bool:
+    """Send one message via Gmail API. Blocking — run via asyncio.to_thread."""
+    raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+    payload = {"raw": raw}
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            service = _load_gmail_service()
+            sent = (
+                service.users()
+                .messages()
+                .send(userId="me", body=payload)
+                .execute()
+            )
+            logger.info(f"[GMAIL API] Sent id={sent.get('id')} (attempt {attempt})")
+            return True
+
+        except HttpError as e:
+            status = getattr(e.resp, "status", None)
+            # 429 = rate limit, 5xx = transient → backoff
+            if status in (429, 500, 502, 503) and attempt < max_attempts:
+                delay = 2 ** (attempt - 1)             # 1s, 2s, ...
+                logger.warning(f"[GMAIL API] {status} — retrying in {delay}s")
+                time.sleep(delay)
+                continue
+            logger.error(f"[GMAIL API] HttpError {status}: {e}")
+            return False
+
+        except Exception as e:
+            logger.error(f"[GMAIL API] Failed: {e}")
+            return False
+
+    return False
+
+
+# ──────────────────────────────────────────────────────────
+# SMTP BACKEND (optional)
+# ──────────────────────────────────────────────────────────
+def _send_via_smtp_sync(message: EmailMessage) -> bool:
+    try:
+        if SMTP_PORT == 465:
+            with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=15) as server:
+                server.login(SMTP_USER, SMTP_PASSWORD)
+                server.send_message(message)
+        else:
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
+                server.starttls()
+                server.login(SMTP_USER, SMTP_PASSWORD)
+                server.send_message(message)
+        return True
+    except Exception as e:
+        logger.error(f"[SMTP ERROR] Failed: {e}")
+        return False
+
+
+# ──────────────────────────────────────────────────────────
+# UNIFIED SENDER
+# ──────────────────────────────────────────────────────────
+def _demo_fallback(recipient_email: str, subject: str, body: str) -> None:
+    """Print to terminal + append to demo_emails.log so the flow is testable."""
+    logger.warning("=" * 60)
+    logger.warning("🚨 EMAIL FAILED — DEMO FALLBACK ACTIVATED:")
+    logger.warning(f"TO: {recipient_email}")
+    logger.warning(f"SUBJECT: {subject}")
+    logger.warning(f"BODY:\n{body}")
+    logger.warning("=" * 60)
+
+    try:
+        from datetime import datetime
+        with open("demo_emails.log", "a", encoding="utf-8") as f:
+            f.write(f"\n[{datetime.now()}] TO: {recipient_email}\n")
+            f.write(f"SUBJECT: {subject}\n{body}\n{'-' * 40}\n")
+    except Exception:
+        pass
+
+
+async def _send_email(recipient_email: str, subject: str, body: str) -> bool:
+    sender = GMAIL_SENDER or SMTP_USER
+    if not sender:
+        logger.error("[EMAIL ERROR] No sender configured (set GMAIL_SENDER or SMTP_USER).")
+        _demo_fallback(recipient_email, subject, body)
+        return False
+
+    message = EmailMessage()
+    # With the Gmail API, From must match the authenticated account (or a
+    # verified "Send mail as" alias); otherwise Gmail rewrites the header.
+    message["From"] = f"ContractMind <{sender}>"
+    message["To"] = recipient_email
+    message["Subject"] = subject
+    message.set_content(body)
+
+    if EMAIL_BACKEND == "smtp":
+        if not SMTP_USER or not SMTP_PASSWORD:
+            logger.error("[EMAIL ERROR] SMTP credentials missing.")
+            _demo_fallback(recipient_email, subject, body)
+            return False
+        success = await asyncio.to_thread(_send_via_smtp_sync, message)
+    else:
+        success = await asyncio.to_thread(_send_via_gmail_api_sync, message)
+
+    if success:
+        logger.info(f"[EMAIL] Sent to {recipient_email} via {EMAIL_BACKEND}")
+    else:
+        _demo_fallback(recipient_email, subject, body)
+
+    return success
+
+
+# ──────────────────────────────────────────────────────────
+# EMAIL TRIGGERS
+# (Signatures unchanged — auth.py and lawyer.py keep working)
+# ──────────────────────────────────────────────────────────
+
+async def send_otp_email(recipient_email: str, otp_code: str) -> bool:
+    subject = "Your ContractMind Verification Code"
+    body = (
+        f"Hello,\n\n"
+        f"Your OTP code is: {otp_code}\n\n"
+        f"This code expires in 5 minutes.\n\n"
+        f"- ContractMind Team"
+    )
+    return await _send_email(recipient_email, subject, body)
+
+
+async def send_lawyer_offer_email(
+    recipient_email: str,
+    contract_title: str,
+    payout_bdt: float,
+    hours: int = 3,
+) -> bool:
+    subject = "New Contract Review Offer"
+    body = (
+        f"Hello,\n\n"
+        f"You have been offered a contract review for: '{contract_title}'.\n"
+        f"Payout: BDT {payout_bdt}\n\n"
+        f"You have {hours} hours to accept this offer in your dashboard.\n\n"
+        f"- ContractMind Team"
+    )
+    return await _send_email(recipient_email, subject, body)
+
+
+async def send_client_lawyer_assigned_email(
+    recipient_email: str,
+    lawyer_name: str,
+    contract_title: str,
+) -> bool:
+    subject = "Lawyer Assigned to Your Contract"
+    body = (
+        f"Hello,\n\n"
+        f"Advocate {lawyer_name} has accepted your request and is reviewing "
+        f"'{contract_title}'.\n"
+        f"You will be notified as soon as the review is complete.\n\n"
+        f"- ContractMind Team"
+    )
+    return await _send_email(recipient_email, subject, body)
+
+
+async def send_client_verification_complete_email(
+    recipient_email: str,
+    lawyer_name: str,
+    contract_title: str,
+) -> bool:
+    subject = "Contract Verification Complete"
+    body = (
+        f"Hello,\n\n"
+        f"Advocate {lawyer_name} has successfully verified '{contract_title}'.\n"
+        f"Log in to your dashboard to view the lawyer's notes and digital signature.\n\n"
+        f"- ContractMind Team"
+    )
+    return await _send_email(recipient_email, subject, body)
+
+
+async def send_sla_refund_email(
+    recipient_email: str,
+    contract_title: str,
+    credits: int,
+) -> bool:
+    subject = "Refund Processed - Verification Timeout"
+    body = (
+        f"Hello,\n\n"
+        f"We were unable to assign a lawyer to '{contract_title}' within the "
+        f"3-day window.\n"
+        f"Your {credits} credits have been fully refunded to your wallet.\n\n"
+        f"- ContractMind Team"
+    )
+    return await _send_email(recipient_email, subject, body)
+
+
+# ──────────────────────────────────────────────────────────
+# CLI helpers
+#   python -m app.services.email_service --auth
+#   python -m app.services.email_service --test you@example.com
+# ──────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+
+    if "--auth" in sys.argv:
+        _load_gmail_service()
+        print(f"Auth complete. Wrote {GMAIL_TOKEN_FILE}")
+
+    elif "--test" in sys.argv:
+        to_addr = sys.argv[2] if len(sys.argv) > 2 else (GMAIL_SENDER or SMTP_USER)
+        if not to_addr:
+            print("Provide a recipient: --test you@example.com")
+            sys.exit(1)
+        ok = asyncio.run(send_otp_email(to_addr, "123456"))
+        print(f"\nSend result: {ok}")
+        if not ok:
+            print("Check demo_emails.log and the terminal log above for the fallback.")
+
+    else:
+        print(
+            "Usage:\n"
+            "  python -m app.services.email_service --auth\n"
+            "  python -m app.services.email_service --test recipient@example.com"
+        )

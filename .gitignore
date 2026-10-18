@@ -1,9 +1,17 @@
-# Environment & Secrets
+# ==========================================
+# Environment & Secrets (CRITICAL)
+# ==========================================
 .env
 .env.*
 !.env.example
+credentials.json
+token.json
+*.pem
+*.key
 
+# ==========================================
 # Python
+# ==========================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -27,23 +35,67 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
 
+# ==========================================
 # Testing & Coverage
+# ==========================================
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
+.tox/
+.nox/
+.cache
 
-# Local Vector Indices, Storage & Temp Data
+# ==========================================
+# Local Vector Indices, Storage & Databases
+# ==========================================
+# Qdrant local storage (very important based on your code)
+local_qdrant_data/
 chroma_db/
 data/faiss_index/
-temp_*
+
+# SQLite / Local DBs
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# ==========================================
+# Logs, Temp Data & Uploads
+# ==========================================
 *.log
+demo_emails.log
+temp_*
 scratch/
 *.pdf
+uploads/
+storage/
 
+# ==========================================
 # IDE & OS Specific
+# ==========================================
 .vscode/
 .idea/
+*.swp
+*.swo
 .DS_Store
+.AppleDouble
+.LSOverride
 Thumbs.db
+Desktop.ini
 *.db
+
+# ==========================================
+# Jupyter Notebooks (if used)
+# ==========================================
+.ipynb_checkpoints/
+
+create_admin.py
+update_db.py
+setup_qdrant.py
+test.py
