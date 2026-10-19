@@ -15,8 +15,7 @@ class QdrantVectorManager:
         
         self.hf_token = os.getenv("HF_TOKEN", "")
         # ✅ e5-small মডেলের API লিংক
-        self.hf_api_url = "https://api-inference.huggingface.co/models/intfloat/multilingual-e5-small"
-
+        self.hf_api_url = "https://router.huggingface.co/hf-inference/models/intfloat/multilingual-e5-small/pipeline/feature-extraction"
         if not self.qdrant_url or not self.qdrant_api_key:
             raise ValueError("[CRITICAL ERROR] QDRANT_URL or QDRANT_API_KEY is missing!")
 
