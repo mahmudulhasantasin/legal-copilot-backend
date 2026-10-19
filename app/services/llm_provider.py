@@ -6,6 +6,30 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+class CustomFallbackLLM:
+    """একটি কাস্টম ফলব্যাক ক্লাস, যা প্রাইমারি মডেল ফেইল করলে স্বয়ংক্রিয়ভাবে ফলব্যাক মডেল ব্যবহার করবে।"""
+    def __init__(self, primary, fallback):
+        self.primary = primary
+        self.fallback = fallback
+
+    async def ainvoke(self, *args, **kwargs):
+        try:
+            return await self.primary.ainvoke(*args, **kwargs)
+        except Exception as e:
+            logger.warning(f"[LLM Fallback] Primary LLM (Gemini) failed: {e}. Switching to Groq...")
+            if self.fallback:
+                return await self.fallback.ainvoke(*args, **kwargs)
+            raise e
+
+    def invoke(self, *args, **kwargs):
+        try:
+            return self.primary.invoke(*args, **kwargs)
+        except Exception as e:
+            logger.warning(f"[LLM Fallback] Primary LLM failed: {e}. Switching to Groq...")
+            if self.fallback:
+                return self.fallback.invoke(*args, **kwargs)
+            raise e
+
 def get_llm():
     """Returns an LLM instance with Gemini as primary and Groq as guaranteed fallback."""
     gemini_key = (
@@ -47,9 +71,9 @@ def get_llm():
         except Exception as exc:
             logger.warning(f"Failed to initialize Gemini: {exc}")
 
+    # ✅ Custom Fallback Wrapper ব্যবহার করা হলো
     if primary_llm and fallback_llm:
-        # যেকোনো Exception (যেমন 429) হলেই যেন Groq-এ ফলব্যাক করে
-        return primary_llm.with_fallbacks([fallback_llm], exceptions_to_handle=(Exception,))
+        return CustomFallbackLLM(primary=primary_llm, fallback=fallback_llm)
     elif primary_llm:
         return primary_llm
     elif fallback_llm:
