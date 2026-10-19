@@ -10,11 +10,10 @@ from app.services.legal_normalizer import normalize_section, normalize_act, reso
 
 logger = logging.getLogger(__name__)
 
-MIN_DENSE_SCORE = 0.38  # এর নিচের সিমিলারিটি বাদ
-PATH_A_SCORE = 2.0       # ইউজার নিজে যে ধারা লিখেছেন: সবসময় ওপরে
-INFERRED_SCORE = 1.0     # এলএলএম-এর অনুমান করা ধারা: ডেনস সার্চেও মিললে তবেই শীর্ষে ওঠে (অনুমান ভুল হতে পারে)
-MIN_FILTERED_HITS = 2    # Act-ফিল্টার করা Path B এর চেয়ে কম দিলে আনফিল্টার্ড ফলব্যাক
-
+MIN_DENSE_SCORE = 0.38
+PATH_A_SCORE = 2.0
+INFERRED_SCORE = 1.0
+MIN_FILTERED_HITS = 2
 
 def _extract_nested_fields(payload: Dict[str, Any]) -> tuple:
     meta = payload.get("metadata") or {}
@@ -24,14 +23,11 @@ def _extract_nested_fields(payload: Dict[str, Any]) -> tuple:
     text = payload.get("text") or payload.get("content") or meta.get("text") or ""
     return str(act).strip(), str(sec).strip(), str(title).strip(), str(text).strip()
 
-
 def _doc_key(payload: Dict[str, Any], act: str, sec: str) -> str:
-    """'Section ২৬' ও 'Section 26' একই ডকুমেন্ট হিসেবে ধরা হবে।"""
     meta = payload.get("metadata") or {}
     act_key = meta.get("act_norm") or normalize_act(act) or act.lower()
     sec_key = meta.get("section_norm") or normalize_section(sec) or sec.lower()
     return f"{act_key}::{sec_key}"
-
 
 def _payload_of(item) -> Dict[str, Any]:
     if hasattr(item, "payload"):
@@ -42,7 +38,6 @@ def _payload_of(item) -> Dict[str, Any]:
         return item.get("payload") or item.get("metadata") or item
     return {}
 
-
 class ProductionHybridRetriever:
     def __init__(self):
         self.collection_name = settings.QDRANT_COLLECTION_NAME
@@ -51,7 +46,7 @@ class ProductionHybridRetriever:
     # ---------------- Path A ----------------
     def _targeted_lookup(self, act: Optional[str], sections: List[str], limit: int = 12,
                          score: float = PATH_A_SCORE) -> List[tuple]:
-        act_norm = resolve_act(act)   # শুধু চেনা Act হলে মান পাবে, নইলে None
+        act_norm = resolve_act(act)
         secs = []
         for s in sections[:6]:
             n = normalize_section(s)
@@ -61,7 +56,6 @@ class ProductionHybridRetriever:
         if not secs:
             return []
         if not act_norm:
-            # Act চেনা না গেলে "Section 26" সব আইন থেকে আসবে -> নয়েজ। তাই Path A বাদ।
             logger.warning(f"[targeted_lookup] Unknown act '{act}', skipping Path A")
             return []
 
@@ -77,7 +71,28 @@ class ProductionHybridRetriever:
                 with_vectors=False,
             )
             logger.info(f"[targeted_lookup] act={act_norm} sections={secs} -> {len(points)} hits")
-            return [(p, score) for p in points]
+            
+            # ✅ FIX: Path A থেকেও Path B-এর মতো স্ট্যান্ডার্ড ডিকশনারি রিটার্ন করা হচ্ছে
+            results = []
+            for p in points:
+                payload = p.payload or {}
+                text_content = payload.get("text") or payload.get("content") or ""
+                metadata = payload.get("metadata", {})
+                
+                hit_dict = {
+                    "id": p.id,
+                    "score": score,
+                    "text": text_content,
+                    "content": text_content,
+                    "act": metadata.get("act", ""),
+                    "section": metadata.get("section", ""),
+                    "title": metadata.get("title", ""),
+                    "metadata": metadata,
+                    "payload": payload
+                }
+                results.append((hit_dict, score))
+            return results
+            
         except Exception as e:
             logger.error(f"[targeted_lookup] failed: {e}")
             return []
@@ -90,7 +105,7 @@ class ProductionHybridRetriever:
         if q_filter is not None and "filter" in sig.parameters:
             return vector_manager.similarity_search(search_text, limit=limit, filter=q_filter)
         hits = vector_manager.similarity_search(search_text, limit=limit)
-        if act_norm:  # ফিল্টার সাপোর্ট নেই -> পাইথনে ফিল্টার
+        if act_norm:
             hits = [
                 h for h in hits
                 if (_payload_of(h).get("metadata") or {}).get("act_norm") == act_norm
@@ -107,7 +122,6 @@ class ProductionHybridRetriever:
 
         try:
             hits = self._run_dense(search_text, limit, q_filter, act_norm)
-            # এলএলএম ভুল Act ধরলে রিকল যেন শূন্য না হয়: আনফিল্টার্ড ফলব্যাক
             if act_norm and len(hits) < MIN_FILTERED_HITS:
                 logger.info(f"[dense] only {len(hits)} hits under act={act_norm}; falling back to unfiltered")
                 hits = self._run_dense(search_text, limit, None, None)
@@ -125,22 +139,18 @@ class ProductionHybridRetriever:
 
     # ---------------- Merge ----------------
     def retrieve(self, query: str, history: list = None, llm_instance=None, top_k: int = 5) -> List[Dict[str, Any]]:
-        # হিস্ট্রি সহ query_analyzer কল করা হচ্ছে
         analysis = analyze_query_dynamically(query, history=history, llm_instance=llm_instance)
         explicit = analysis.explicit_sections or []
         explicit_norm = {normalize_section(s) for s in explicit}
         inferred = [s for s in (analysis.inferred_sections or []) if normalize_section(s) not in explicit_norm]
 
-        # মাল্টি-অ্যাক্ট সাপোর্ট: Query Analyzer থেকে আসা লিস্ট ব্যবহার করা হলো
         acts_to_search = getattr(analysis, "detected_acts", [])
         if not acts_to_search:
-            acts_to_search = [None]  # কোনো আইন ডিটেক্ট না হলে আনফিল্টার্ড ডেনস সার্চের জন্য অন্তত একবার লুপ চলবে
+            acts_to_search = [None]
 
         merged: Dict[str, Dict[str, Any]] = {}
         
-        # ডিটেক্ট করা প্রতিটি আইনের জন্য লুপ চলবে
         for act in acts_to_search:
-            # ইউজারের নিজের লেখা ধারা বেশি ওজন পায়; এলএলএম-অনুমানকৃত ধারা কম
             path_a = (self._targeted_lookup(act, explicit, score=PATH_A_SCORE)
                       + self._targeted_lookup(act, inferred, score=INFERRED_SCORE))
             path_b = self._dense_semantic_search(analysis.optimized_query, act, limit=top_k + 2)
@@ -166,8 +176,6 @@ class ProductionHybridRetriever:
         return sorted(merged.values(), key=lambda x: x["score"], reverse=True)[:top_k]
 
     async def aretrieve(self, query: str, history: list = None, llm_instance=None, top_k: int = 5):
-        """ব্লকিং Qdrant/LLM কল ইভেন্ট লুপ আটকাবে না।"""
         return await asyncio.to_thread(self.retrieve, query, history, llm_instance, top_k)
-
 
 hybrid_retriever = ProductionHybridRetriever()
