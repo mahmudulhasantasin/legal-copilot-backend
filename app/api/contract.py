@@ -1,4 +1,5 @@
 import os
+import re  # ✅ নতুন ইমপোর্ট (ফাইলের নাম পরিষ্কার করার জন্য)
 import uuid
 import logging
 from datetime import datetime, timezone, timedelta
@@ -98,14 +99,15 @@ def _calculate_metrics(clauses: List[dict]) -> tuple[Dict[str, int], int, RiskLe
     return {"high_risk": high, "review_needed": review, "compliant": compliant}, score, overall
 
 
-# ✅ FIX 1: content_type প্যারামিটার যুক্ত করা হলো
 async def _upload_to_supabase(file_bytes: bytes, filename: str, user_id: int, content_type: str) -> str:
     """Uploads file to Supabase and returns the storage path."""
     supabase = get_supabase()
     if not supabase:
         raise HTTPException(500, "Storage service is not configured.")
 
-    safe_name = f"u_{user_id}_{uuid.uuid4().hex[:8]}_{filename}"
+    # ✅ FIX: ফাইলের নামের ভেতরের স্পেস এবং স্পেশাল ক্যারেক্টার পরিষ্কার করা হলো
+    safe_filename = re.sub(r'[^a-zA-Z0-9.\-]', '_', filename)
+    safe_name = f"u_{user_id}_{uuid.uuid4().hex[:8]}_{safe_filename}"
     file_path = safe_name
 
     try:
@@ -157,7 +159,7 @@ async def upload_and_audit(
 
     # 4. Extract Text
     try:
-        # ✅ FIX 2: extract_text_from_file এখন async, তাই await দিতে হবে
+        # ✅ extract_text_from_file এখন async, তাই await দিতে হবে
         raw_text = await extract_text_from_file(file.filename, file_bytes)
     except Exception as e:
         logger.error(f"[Ingestion] Extraction failed: {e}")
@@ -311,7 +313,7 @@ async def request_lawyer_verification(
     success = await generate_initial_offer(db, memo)
     
     if not success:
-        # ✅ FIX 3: ডাটাবেসে রিফান্ড প্রসেস করা হলো
+        # ✅ ডাটাবেসে রিফান্ড প্রসেস করা হলো
         await refund_credits(
             db=db, 
             user=current_user, 
