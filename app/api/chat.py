@@ -42,8 +42,8 @@ class CitedSectionDetail(BaseModel):
 
 class StructuredLegalResponse(BaseModel):
     detailed_answer: str
-    cited_sections: List[CitedSectionDetail] = []
-    suggested_next_steps: List[str] = []
+    cited_sections: List[CitedSectionDetail] = Field(default_factory=list)
+    suggested_next_steps: List[str] = Field(default_factory=list)
 
 class CreateSessionRequest(BaseModel):
     mode: str = Field(default="GENERAL", description="GENERAL, LAWYER_RESEARCH, or USER_CONTRACT")
@@ -62,17 +62,11 @@ class ChatResponse(BaseModel):
     credits_source: str  # e.g., "wallet", "monthly_pool", "free"
     language_detected: str
 
-DEFAULT_NEXT_STEPS = [
-    "Review the referenced statutory provisions with an advocate.",
-    "Gather any formal contracts, notices, or evidence related to this issue.",
-]
-
-
 # ──────────────────────────────────────────────────────────
 # HELPERS
 # ──────────────────────────────────────────────────────────
 
-def _format_agent_output(raw_text: str, retrieved_docs: list) -> StructuredLegalResponse:
+def _format_agent_output(raw_text: str, retrieved_docs: list, citation_verified: bool = True) -> StructuredLegalResponse:
     """Formats LLM output and validates citations against retrieved docs."""
     valid_docs_map = {}
     by_section = {}
@@ -107,7 +101,8 @@ def _format_agent_output(raw_text: str, retrieved_docs: list) -> StructuredLegal
         if act:
             a_n = resolve_act(act) or normalize_act(act)
             doc = valid_docs_map.get(f"{a_n}_{s_n}")
-        if doc is None:
+        # Do not silently attach a section from another Act if the model named an Act.
+        if doc is None and not act:
             candidates = by_section.get(s_n, [])
             if len(candidates) == 1:
                 doc = candidates[0]
@@ -131,16 +126,19 @@ def _format_agent_output(raw_text: str, retrieved_docs: list) -> StructuredLegal
         if isinstance(parsed, dict) and "detailed_answer" in parsed:
             answer_text = parsed.get("detailed_answer") or raw_text
             next_steps = parsed.get("suggested_next_steps") or None
-            for c in parsed.get("cited_sections", []) or []:
-                if isinstance(c, dict):
-                    add_citation(c.get("act"), c.get("section_number"), c.get("relevance"))
+            if citation_verified:
+                for c in parsed.get("cited_sections", []) or []:
+                    if isinstance(c, dict):
+                        add_citation(c.get("act"), c.get("section_number"), c.get("relevance"))
     except Exception:
         pass
 
+    if next_steps is None:
+        next_steps = ["Review the cited provisions with a qualified Bangladesh advocate."] if cited_items else []
     return StructuredLegalResponse(
         detailed_answer=answer_text,
         cited_sections=cited_items,
-        suggested_next_steps=next_steps or DEFAULT_NEXT_STEPS,
+        suggested_next_steps=next_steps,
     )
 
 
@@ -431,7 +429,11 @@ DETAILED CLAUSES ANALYSIS:
     # 7. Format Output
     raw_answer = graph_output.get("final_answer") or "No legal answer generated."
     retrieved_docs = graph_output.get("retrieved_docs") or []
-    structured_res = _format_agent_output(raw_answer, retrieved_docs)
+    structured_res = _format_agent_output(
+        raw_answer,
+        retrieved_docs,
+        citation_verified=bool(graph_output.get("citation_verified", False)),
+    )
 
     # 8. Save Messages & Update Session
     user_msg = ChatMessage(

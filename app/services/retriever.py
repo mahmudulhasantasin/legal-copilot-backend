@@ -122,9 +122,10 @@ class ProductionHybridRetriever:
 
         try:
             hits = self._run_dense(search_text, limit, q_filter, act_norm)
+            # Safety: if an Act is identified, do not mix in results from other Acts
+            # merely because the Act-filtered search returns fewer hits.
             if act_norm and len(hits) < MIN_FILTERED_HITS:
-                logger.info(f"[dense] only {len(hits)} hits under act={act_norm}; falling back to unfiltered")
-                hits = self._run_dense(search_text, limit, None, None)
+                logger.info("[dense] only %s hits under act=%s; keeping filtered results", len(hits), act_norm)
         except Exception as e:
             logger.error(f"[dense_semantic_search] failed: {e}")
             return []

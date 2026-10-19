@@ -6,7 +6,6 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-
 def get_llm():
     """Returns an LLM instance with Gemini as primary and Groq as guaranteed fallback."""
     gemini_key = (
@@ -23,11 +22,11 @@ def get_llm():
     if groq_key:
         try:
             fallback_llm = ChatGroq(
-                model="qwen/qwen3.8-27b",  # FIXED: Correct Groq model
+                model="llama-3.1-8b-instant",  # ✅ ফাস্ট এবং হাই-লিমিট মডেল
                 api_key=groq_key,
                 temperature=0.2,
                 max_retries=1,
-                timeout=60.0  # FIXED: Used 'timeout' instead of 'request_timeout'
+                timeout=60.0
             )
             logger.info("Groq fallback LLM initialized successfully.")
         except Exception as exc:
@@ -41,15 +40,16 @@ def get_llm():
             primary_llm = ChatGoogleGenerativeAI(
                 model="gemini-flash-latest",
                 google_api_key=gemini_key,
-                max_retries=0,          # Don't waste time retrying 503
-                timeout=60.0            # FIXED: Used 'timeout' instead of 'request_timeout'
+                max_retries=0,          
+                timeout=60.0            
             )
             logger.info("Gemini primary LLM initialized successfully.")
         except Exception as exc:
             logger.warning(f"Failed to initialize Gemini: {exc}")
 
     if primary_llm and fallback_llm:
-        return primary_llm.with_fallbacks([fallback_llm])
+        # ✅ exceptions_to_handle=(Exception,) দিলে যেকোনো এরর হলেই Fallback ট্রিগার হবে
+        return primary_llm.with_fallbacks([fallback_llm], exceptions_to_handle=(Exception,))
     elif primary_llm:
         return primary_llm
     elif fallback_llm:
