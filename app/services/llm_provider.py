@@ -6,9 +6,11 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+_llm_instance = None
+
 
 class CustomFallbackLLM:
-    """একটি কাস্টম ফলব্যাক ক্লাস, যা প্রাইমারি মডেল ফেইল করলে স্বয়ংক্রিয়ভাবে ফলব্যাক মডেল ব্যবহার করবে।"""
+    """প্রাইমারি মডেল ফেইল করলে বা 503 পেলে স্বয়ংক্রিয়ভাবে Groq ফলব্যাক ব্যবহার করবে।"""
     def __init__(self, primary, fallback):
         self.primary = primary
         self.fallback = fallback
@@ -17,7 +19,7 @@ class CustomFallbackLLM:
         try:
             return await self.primary.ainvoke(*args, **kwargs)
         except Exception as e:
-            logger.warning(f"[LLM Fallback] Primary LLM (Gemini) failed: {e}. Switching to Groq...")
+            logger.warning(f"[LLM Fallback] Primary LLM failed: {e}. Switching immediately to Groq...")
             if self.fallback:
                 return await self.fallback.ainvoke(*args, **kwargs)
             raise e
@@ -26,14 +28,18 @@ class CustomFallbackLLM:
         try:
             return self.primary.invoke(*args, **kwargs)
         except Exception as e:
-            logger.warning(f"[LLM Fallback] Primary LLM failed: {e}. Switching to Groq...")
+            logger.warning(f"[LLM Fallback] Primary LLM failed: {e}. Switching immediately to Groq...")
             if self.fallback:
                 return self.fallback.invoke(*args, **kwargs)
             raise e
 
 
 def get_llm():
-    """Returns an LLM instance with Gemini as primary and Groq as guaranteed fallback."""
+    """Returns a cached LLM instance with optimized timeouts."""
+    global _llm_instance
+    if _llm_instance is not None:
+        return _llm_instance
+
     gemini_key = (
         getattr(settings, "GEMINI_API_KEY", None)
         or os.getenv("GEMINI_API_KEY")
@@ -44,41 +50,41 @@ def get_llm():
     primary_llm = None
     fallback_llm = None
 
-    # Fallback: Groq
+    # Groq Fallback (llama-3.3-70b-versatile is ultra-fast and reliable for legal reasoning)
     if groq_key:
         try:
             fallback_llm = ChatGroq(
-                model="openai/gpt-oss-20b",
+                model="llama-3.3-70b-versatile",
                 api_key=groq_key,
-                temperature=0.2,
-                max_retries=1,
-                timeout=60.0
+                temperature=0.1,
+                max_retries=2,
+                timeout=90.0
             )
             logger.info("Groq fallback LLM initialized successfully.")
         except Exception as exc:
             logger.warning(f"Failed to initialize Groq: {exc}")
-    else:
-        logger.warning("GROQ_API_KEY is not configured in environment or settings.")
 
-    # Primary: Gemini Flash
+    # Primary: Gemini 1.5 Flash (stable model name)
     if gemini_key:
         try:
             primary_llm = ChatGoogleGenerativeAI(
-                model="gemini-flash-latest",
+                model="gemini-1.5-flash",
                 google_api_key=gemini_key,
-                temperature=0.2,
-                max_retries=0,          
-                timeout=60.0            
+                temperature=0.1,
+                max_retries=1,          
+                timeout=90.0            
             )
             logger.info("Gemini primary LLM initialized successfully.")
         except Exception as exc:
             logger.warning(f"Failed to initialize Gemini: {exc}")
 
     if primary_llm and fallback_llm:
-        return CustomFallbackLLM(primary=primary_llm, fallback=fallback_llm)
+        _llm_instance = CustomFallbackLLM(primary=primary_llm, fallback=fallback_llm)
     elif primary_llm:
-        return primary_llm
+        _llm_instance = primary_llm
     elif fallback_llm:
-        return fallback_llm
+        _llm_instance = fallback_llm
     else:
         raise ValueError("Neither GEMINI_API_KEY nor GROQ_API_KEY is configured!")
+
+    return _llm_instance
