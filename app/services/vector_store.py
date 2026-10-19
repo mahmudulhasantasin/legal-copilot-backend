@@ -16,8 +16,7 @@ class QdrantVectorManager:
         # ✅ Hugging Face API টোকেন (Render-এর Environment-এ HF_TOKEN হিসেবে সেট করতে হবে)
         self.hf_token = os.getenv("HF_TOKEN", "")
         # ✅ আপনার লোকাল স্ক্রিপ্ট যে মডেল ব্যবহার করছে, ঠিক সেই মডেলটিই এখানে ব্যবহার হচ্ছে
-        self.hf_api_url = "https://api-inference.huggingface.co/models/intfloat/multilingual-e5-small"
-
+        self.hf_api_url = "https://router.huggingface.co/hf-inference/models/intfloat/multilingual-e5-small/pipeline/feature-extraction"
         if self.qdrant_url and self.qdrant_api_key:
             print("Connecting to Qdrant Cloud via API...")
             self.client = QdrantClient(url=self.qdrant_url, api_key=self.qdrant_api_key, timeout=60.0)
