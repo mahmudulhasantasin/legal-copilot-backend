@@ -44,8 +44,6 @@ def _parse_json_object(text: str) -> dict:
     if start == -1 or end <= start: raise ValueError("no JSON object in LLM output")
     return json.loads(text[start:end + 1])
 
-
-# ✅ NEW PROMPT: আরও কঠোর এবং কী-ওয়ার্ড ফোকাসড
 ROUTER_PROMPT = """You are an expert Legal Query Reformulator for Bangladesh Law.
 Your core task is to bridge the "Semantic Gap" between a user's layman terms and formal legal terminology.
 
@@ -62,8 +60,6 @@ Analyze the user's query (and chat history if provided) and respond ONLY with a 
   "optimized_query": "Expanded semantic search string in both Bengali and English."
 }"""
 
-
-# ✅ SMART FALLBACK: LLM ফেইল করলে কী-ওয়ার্ড দেখে আইন অনুমান করবে
 def _fallback(user_query: str, explicit: List[str]) -> AnalyzedQuery:
     detected_acts = []
     q_lower = user_query.lower()
@@ -82,7 +78,6 @@ def _fallback(user_query: str, explicit: List[str]) -> AnalyzedQuery:
         optimized_query=user_query[:250]
     )
 
-
 def analyze_query_dynamically(user_query: str, history: list = None, llm_instance=None) -> AnalyzedQuery:
     explicit = _extract_explicit_sections(user_query)
 
@@ -93,7 +88,6 @@ def analyze_query_dynamically(user_query: str, history: list = None, llm_instanc
         except Exception:
             return _fallback(user_query, explicit)
 
-    # Format Chat History for LLM
     history_context = ""
     if history:
         history_text = "\n".join([f"{msg.type}: {msg.content}" for msg in history[-4:]])
@@ -128,5 +122,5 @@ def analyze_query_dynamically(user_query: str, history: list = None, llm_instanc
         logger.info(f"[analyzer] acts={result.detected_acts} optimized_query='{result.optimized_query}'")
         return result
     except Exception as exc:
-        logger.exception(f"[analyze_query_dynamically] LLM analysis failed (likely 429). Using fallback.")
+        logger.exception(f"[analyze_query_dynamically] LLM analysis failed. Using fallback.")
         return _fallback(user_query, explicit)

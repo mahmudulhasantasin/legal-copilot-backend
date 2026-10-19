@@ -18,11 +18,11 @@ def get_llm():
     primary_llm = None
     fallback_llm = None
 
-    # Fallback: Groq
+    # Fallback: Groq (লিমিট বেশি হওয়ায় llama-3.1-8b-instant ব্যবহার করা হলো)
     if groq_key:
         try:
             fallback_llm = ChatGroq(
-                model="llama-3.1-8b-instant",  # ✅ ফাস্ট এবং হাই-লিমিট মডেল
+                model="llama-3.1-8b-instant", 
                 api_key=groq_key,
                 temperature=0.2,
                 max_retries=1,
@@ -48,7 +48,7 @@ def get_llm():
             logger.warning(f"Failed to initialize Gemini: {exc}")
 
     if primary_llm and fallback_llm:
-        # ✅ exceptions_to_handle=(Exception,) দিলে যেকোনো এরর হলেই Fallback ট্রিগার হবে
+        # যেকোনো Exception (যেমন 429) হলেই যেন Groq-এ ফলব্যাক করে
         return primary_llm.with_fallbacks([fallback_llm], exceptions_to_handle=(Exception,))
     elif primary_llm:
         return primary_llm

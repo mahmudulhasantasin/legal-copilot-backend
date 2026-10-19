@@ -72,7 +72,6 @@ class ProductionHybridRetriever:
             )
             logger.info(f"[targeted_lookup] act={act_norm} sections={secs} -> {len(points)} hits")
             
-            # ✅ FIX: Path A থেকেও Path B-এর মতো স্ট্যান্ডার্ড ডিকশনারি রিটার্ন করা হচ্ছে
             results = []
             for p in points:
                 payload = p.payload or {}
@@ -122,10 +121,11 @@ class ProductionHybridRetriever:
 
         try:
             hits = self._run_dense(search_text, limit, q_filter, act_norm)
-            # Safety: if an Act is identified, do not mix in results from other Acts
-            # merely because the Act-filtered search returns fewer hits.
+            
+            # ✅ FIX: আনফিল্টার্ড ফলব্যাক বন্ধ করা হলো (যাতে র‍্যান্ডম পুলিশ/সন্ত্রাস আইন না আসে)
             if act_norm and len(hits) < MIN_FILTERED_HITS:
-                logger.info("[dense] only %s hits under act=%s; keeping filtered results", len(hits), act_norm)
+                logger.info(f"[dense] only {len(hits)} hits under act={act_norm}; NOT falling back to unfiltered.")
+                pass 
         except Exception as e:
             logger.error(f"[dense_semantic_search] failed: {e}")
             return []

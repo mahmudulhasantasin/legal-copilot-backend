@@ -13,7 +13,7 @@ from app.services.verifier import verifier
 
 logger = logging.getLogger(__name__)
 
-# Specific precedent triggers only (generic terms like 'আদালত' or 'বিচার' বাদ, ধীর ওয়েব সার্চ এড়াতে)
+# Specific precedent triggers only (generic terms like 'আদালত' বা 'বিচার' বাদ, ধীর ওয়েব সার্চ এড়াতে)
 PRECEDENT_TRIGGERS = [
     "verdict", "judgment", "judgement", "precedent", "ruling", "case law",
     "supreme court verdict", "high court verdict",
@@ -24,8 +24,6 @@ NO_CONTEXT_ANSWER = (
     "দুঃখিত, আপনার প্রশ্নের সাথে সম্পর্কিত কোনো আইনের ধারা আমাদের ডাটাবেসে খুঁজে পাওয়া যায়নি। "
     "অনুগ্রহ করে পরিস্থিতিটি আরও সুনির্দিষ্টভাবে লিখুন (যেমন কোন ধরনের বিষয় বা কোন আইন সম্পর্কিত)।"
 )
-
-
 
 # Query routing prevents unrelated prompts from being answered as legal questions.
 QUERY_ROUTER_PROMPT = """
@@ -112,6 +110,7 @@ async def classify_query_node(state: QAState) -> dict:
 
 def route_after_classification(state: QAState) -> str:
     return "stop" if state.get("final_answer") else "retrieve"
+
 
 async def retrieve_node(state: QAState) -> dict:
     """Qdrant থেকে আইনের ধারা আনে। লাইভ ওয়েব সার্চ শুধু স্পষ্টভাবে রায়/নজির চাইলে।"""
@@ -207,7 +206,7 @@ async def generate_answer_node(state: QAState) -> dict:
 
     context_sections = []
     
-    # নতুন: কন্ট্রাক্ট কনটেক্সট থাকলে সেটি সবার আগে পুশ করা হবে
+    # কন্ট্রাক্ট কনটেক্সট থাকলে সেটি সবার আগে পুশ করা হবে
     if contract_context:
         context_sections.append(f"=== CURRENT CONTRACT ANALYSIS (CRITICAL CONTEXT) ===\n{contract_context}\n===================================================")
 
@@ -227,7 +226,7 @@ async def generate_answer_node(state: QAState) -> dict:
             messages.extend(history_messages)
         messages.append(HumanMessage(content=user_prompt))
 
-        # NEW: ainvoke ব্যবহার করা হচ্ছে (Fast API-তে নন-ব্লকিং কলের জন্য)
+        # Fast API-তে নন-ব্লকিং কলের জন্য
         response = await llm.ainvoke(messages)
         
         answer_text = ""
@@ -254,12 +253,13 @@ async def generate_answer_node(state: QAState) -> dict:
     except Exception as e:
         logger.error(f"[generate_answer_node] verifier error: {e}")
 
-    if verification_texts and not is_verified:
-        answer_text = json.dumps({
-            "detailed_answer": "প্রাসঙ্গিক আইনগত তথ্য পাওয়া গেলেও উত্তরের উদ্ধৃতিগুলো উৎসের সঙ্গে নির্ভরযোগ্যভাবে যাচাই করা যায়নি। ভুল আইনি তথ্য এড়াতে নিশ্চিত উত্তর দিচ্ছি না। অনুগ্রহ করে প্রশ্নটি আরও নির্দিষ্ট করুন অথবা প্রাসঙ্গিক আইন/ধারার তথ্য দিন।",
-            "cited_sections": [],
-            "suggested_next_steps": [],
-        }, ensure_ascii=False)
+    # ✅ FIX: সাইটেশন না মিললেও এআই-এর উত্তর আটকে দেওয়া হলো না (chat.py তে এটি ফিল্টার হবে)
+    # if verification_texts and not is_verified:
+    #     answer_text = json.dumps({
+    #         "detailed_answer": "প্রাসঙ্গিক আইনগত তথ্য পাওয়া গেলেও উত্তরের উদ্ধৃতিগুলো উৎসের সঙ্গে নির্ভরযোগ্যভাবে যাচাই করা যায়নি। ভুল আইনি তথ্য এড়াতে নিশ্চিত উত্তর দিচ্ছি না। অনুগ্রহ করে প্রশ্নটি আরও নির্দিষ্ট করুন অথবা প্রাসঙ্গিক আইন/ধারার তথ্য দিন।",
+    #         "cited_sections": [],
+    #         "suggested_next_steps": [],
+    #     }, ensure_ascii=False)
 
     return {
         "final_answer": answer_text,
