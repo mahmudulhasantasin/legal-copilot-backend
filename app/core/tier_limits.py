@@ -34,8 +34,8 @@ TIER_LIMITS: Dict[str, Dict[str, Any]] = {
         "rolling_summary": True,
     },
     "ADMIN": {
-        "active_sessions": -1,
-        "messages_per_session": -1,
+        "active_sessions": 200000,
+        "messages_per_session":200000,
         "monthly_total_chats": None,
         "rolling_summary": True,
     },
