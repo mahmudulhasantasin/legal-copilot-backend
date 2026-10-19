@@ -13,7 +13,6 @@ from supabase import create_client, Client
 
 from app.config import settings
 from app.core.database import get_db
-# ✅ FIX 1: refund_credits ইমপোর্ট করা হলো
 from app.core.security import get_current_user, check_and_deduct_credits, refund_credits
 from app.core.pricing import get_audit_cost, get_service_cost, get_lawyer_verification_split
 from app.models.user import User, UserRole, CreditTxType
@@ -99,7 +98,8 @@ def _calculate_metrics(clauses: List[dict]) -> tuple[Dict[str, int], int, RiskLe
     return {"high_risk": high, "review_needed": review, "compliant": compliant}, score, overall
 
 
-async def _upload_to_supabase(file_bytes: bytes, filename: str, user_id: int) -> str:
+# ✅ FIX 1: content_type প্যারামিটার যুক্ত করা হলো
+async def _upload_to_supabase(file_bytes: bytes, filename: str, user_id: int, content_type: str) -> str:
     """Uploads file to Supabase and returns the storage path."""
     supabase = get_supabase()
     if not supabase:
@@ -112,12 +112,13 @@ async def _upload_to_supabase(file_bytes: bytes, filename: str, user_id: int) ->
         res = supabase.storage.from_(BUCKET_NAME).upload(
             path=file_path,
             file=file_bytes,
-            file_options={"content-type": "application/pdf"}
+            # ✅ এখন আসল ফাইল টাইপ পাঠানো হচ্ছে (PDF, DOCX ইত্যাদি)
+            file_options={"content-type": content_type or "application/octet-stream"}
         )
         return file_path
     except Exception as e:
         logger.error(f"[Supabase] Upload failed: {e}")
-        raise HTTPException(500, "Failed to upload document to secure storage.")
+        raise HTTPException(500, f"Failed to upload document to secure storage: {str(e)}")
 
 
 # ──────────────────────────────────────────────────────────
@@ -137,7 +138,7 @@ async def upload_and_audit(
     if ext not in allowed_types:
         raise HTTPException(400, f"Unsupported file format. Allowed: {', '.join(allowed_types)}")
 
-    # 2. Deduct Credits (B2C or B2B pricing)
+    # 2. Deduct Credits
     cost = get_audit_cost(current_user.role)
     deduction = await check_and_deduct_credits(
         user=current_user,
@@ -150,11 +151,14 @@ async def upload_and_audit(
 
     # 3. Read and Upload File
     file_bytes = await file.read()
-    storage_path = await _upload_to_supabase(file_bytes, file.filename, current_user.id)
+    storage_path = await _upload_to_supabase(
+        file_bytes, file.filename, current_user.id, file.content_type
+    )
 
     # 4. Extract Text
     try:
-        raw_text = extract_text_from_file(file.filename, file_bytes)
+        # ✅ FIX 2: extract_text_from_file এখন async, তাই await দিতে হবে
+        raw_text = await extract_text_from_file(file.filename, file_bytes)
     except Exception as e:
         logger.error(f"[Ingestion] Extraction failed: {e}")
         raise HTTPException(400, "Could not read text from the uploaded file.")
@@ -307,7 +311,7 @@ async def request_lawyer_verification(
     success = await generate_initial_offer(db, memo)
     
     if not success:
-        # ✅ FIX 2: ডাটাবেসে রিফান্ড প্রসেস করা হলো
+        # ✅ FIX 3: ডাটাবেসে রিফান্ড প্রসেস করা হলো
         await refund_credits(
             db=db, 
             user=current_user, 
@@ -387,7 +391,6 @@ async def get_download_url(
     
     contract, memo = row
 
-    # ✅ নতুন লজিক: লইয়ার ফাইনাল পিডিএফ দিলে সেটি ডাউনলোড হবে, নাহলে অরিজিনাল
     file_to_download = contract.file_path
     if memo and memo.signed_contract_path:
         file_to_download = memo.signed_contract_path

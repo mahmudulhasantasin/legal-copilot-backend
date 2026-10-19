@@ -182,7 +182,8 @@ class DocumentProcessor:
 doc_processor = DocumentProcessor()
 
 
-def extract_text_from_file(filename: str, content: bytes) -> str:
+# ✅ FIX: extract_text_from_file কে async করা হলো যাতে ইভেন্ট লুপ কনফ্লিক্ট না হয়
+async def extract_text_from_file(filename: str, content: bytes) -> str:
     ext = os.path.splitext(filename)[1].lower()
 
     if ext in [".txt", ".md"]:
@@ -213,13 +214,8 @@ def extract_text_from_file(filename: str, content: bytes) -> str:
             if len(raw) > 50:
                 return raw
 
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            chunks = loop.run_until_complete(doc_processor.process_pdf_with_ocr(temp_file_path))
+            # ✅ সরাসরি await করা হলো, কোনো run_until_complete নেই
+            chunks = await doc_processor.process_pdf_with_ocr(temp_file_path)
             return "\n\n".join(chunks)
 
         raise ValueError(f"Unsupported file format: {ext}")
