@@ -182,7 +182,6 @@ class DocumentProcessor:
 doc_processor = DocumentProcessor()
 
 
-# ✅ FIX: extract_text_from_file কে async করা হলো যাতে ইভেন্ট লুপ কনফ্লিক্ট না হয়
 async def extract_text_from_file(filename: str, content: bytes) -> str:
     ext = os.path.splitext(filename)[1].lower()
 
@@ -214,7 +213,6 @@ async def extract_text_from_file(filename: str, content: bytes) -> str:
             if len(raw) > 50:
                 return raw
 
-            # ✅ সরাসরি await করা হলো, কোনো run_until_complete নেই
             chunks = await doc_processor.process_pdf_with_ocr(temp_file_path)
             return "\n\n".join(chunks)
 

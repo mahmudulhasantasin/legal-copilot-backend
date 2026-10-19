@@ -13,7 +13,7 @@ from app.services.verifier import verifier
 
 logger = logging.getLogger(__name__)
 
-# Specific precedent triggers only (generic terms like 'আদালত' বা 'বিচার' বাদ, ধীর ওয়েব সার্চ এড়াতে)
+# Specific precedent triggers only
 PRECEDENT_TRIGGERS = [
     "verdict", "judgment", "judgement", "precedent", "ruling", "case law",
     "supreme court verdict", "high court verdict",
@@ -21,21 +21,21 @@ PRECEDENT_TRIGGERS = [
 ]
 
 NO_CONTEXT_ANSWER = (
-    "দুঃখিত, আপনার প্রশ্নের সাথে সম্পর্কিত কোনো আইনের ধারা আমাদের ডাটাবেসে খুঁজে পাওয়া যায়নি। "
-    "অনুগ্রহ করে পরিস্থিতিটি আরও সুনির্দিষ্টভাবে লিখুন (যেমন কোন ধরনের বিষয় বা কোন আইন সম্পর্কিত)।"
+    "দুঃখিত, আপনার প্রশ্নের সাথে সরাসরি সম্পর্কিত কোনো আইনের ধারা এই মুহূর্তে আমাদের ডাটাবেসে খুঁজে পাওয়া যায়নি। "
+    "অনুগ্রহ করে আপনার পরিস্থিতি বা ঘটনাটি আরও সুনির্দিষ্টভাবে লিখুন (যেমন: কী ধরনের বিরোধ, কোন চুক্তি বা কোন আইন সম্পর্কিত)।"
 )
 
 # Query routing prevents unrelated prompts from being answered as legal questions.
 QUERY_ROUTER_PROMPT = """
 You are the query router for Advotech Copilot, a Bangladesh-law assistant.
 Classify the CURRENT request as exactly one of:
-ANSWERABLE: Bangladesh law, legal rights/procedure, statutes, judgments, or legal/contract documents.
-NEEDS_CLARIFICATION: potentially legal, but essential facts or the meaning are unclear.
-OUT_OF_SCOPE: clearly unrelated to law or the current contract context (e.g. coding, weather, recipes, general trivia).
-INSUFFICIENT_EVIDENCE: explicitly asks for another jurisdiction rather than Bangladesh law.
+ANSWERABLE: Bangladesh law, legal rights/procedure, statutes, judgments, legal situations, or contract documents.
+NEEDS_CLARIFICATION: potentially legal, even if brief or missing some facts (we will still search the database to provide a baseline).
+OUT_OF_SCOPE: clearly unrelated to law or the current contract context (e.g. coding, weather, recipes, sports, general trivia).
+INSUFFICIENT_EVIDENCE: explicitly asks for another country's jurisdiction rather than Bangladesh law.
 Use history only to resolve follow-up references. If contract context exists, questions about it are in scope.
-Return ONLY JSON: {"status":"ANSWERABLE|NEEDS_CLARIFICATION|OUT_OF_SCOPE|INSUFFICIENT_EVIDENCE","response":"short response if not ANSWERABLE; otherwise empty"}.
-Match language: Bengali/Banglish -> formal Bengali script; English -> English. Ask at most two focused clarification questions. Do not give legal analysis here.
+Return ONLY JSON: {"status":"ANSWERABLE|NEEDS_CLARIFICATION|OUT_OF_SCOPE|INSUFFICIENT_EVIDENCE","response":"short polite response if OUT_OF_SCOPE or INSUFFICIENT_EVIDENCE; otherwise empty"}.
+Match language: Bengali/Banglish -> formal Bengali script; English -> English.
 """
 
 
@@ -67,13 +67,21 @@ def _fallback_route(query, contract_context):
     q = (query or "").strip().lower()
     if contract_context:
         return "ANSWERABLE", ""
-    off_topic = ("weather", "recipe", "football score", "cricket score", "debug my code",
-                 "python", "javascript", "react", "fastapi", "machine learning", "kaggle", "datathon",
-                 "আবহাওয়া", "রেসিপি", "ক্রিকেটের স্কোর", "পাইথন কোড", "জাভাস্ক্রিপ্ট")
+    off_topic = (
+        "weather", "recipe", "football score", "cricket score", "debug my code",
+        "python", "javascript", "react", "fastapi", "machine learning", "kaggle", "datathon",
+        "আবহাওয়া", "রেসিপি", "ক্রিকেটের স্কোর", "পাইথন কোড", "জাভাস্ক্রিপ্ট"
+    )
     if any(term in q for term in off_topic):
-        return "OUT_OF_SCOPE", "আমি বাংলাদেশি আইন, আইনি প্রক্রিয়া ও চুক্তি-সংক্রান্ত প্রশ্নে সহায়তা করি। আপনার প্রশ্নটি আইনের সঙ্গে কীভাবে সম্পর্কিত, তা বললে সাহায্য করতে পারব।"
-    if len(q.split()) <= 3:
-        return "NEEDS_CLARIFICATION", "আপনার সমস্যাটি কোন বিষয়ের সঙ্গে সম্পর্কিত এবং কী ঘটেছে—সংক্ষেপে বলবেন? প্রাসঙ্গিক ঘটনা বা নথির তথ্যও দিন।"
+        return (
+            "OUT_OF_SCOPE",
+            "আমি বাংলাদেশি আইন, আইনি প্রক্রিয়া ও চুক্তি-সংক্রান্ত প্রশ্নে সহায়তা করি। আপনার প্রশ্নটি আইনের সঙ্গে কীভাবে সম্পর্কিত, তা জানালে সাহায্য করতে পারব।"
+        )
+    if len(q.split()) <= 1 and q in {"hi", "hello", "হ্যালো", "হাই", "সালাম", "assalamu alaikum"}:
+        return (
+            "OUT_OF_SCOPE",
+            "স্বাগতম! আমি আপনার বাংলাদেশি আইন ও চুক্তি-বিষয়ক সহকারী। আপনার আইনি প্রশ্ন বা সমস্যার কথা বিস্তারিত লিখুন, আমি প্রাসঙ্গিক আইন ও ধারা অনুযায়ী সাহায্য করার চেষ্টা করব।"
+        )
     return "ANSWERABLE", ""
 
 
@@ -86,26 +94,41 @@ async def classify_query_node(state: QAState) -> dict:
         return {"final_answer": "অনুগ্রহ করে আপনার আইনি প্রশ্নটি লিখুন।", "retrieved_docs": [], "citation_verified": False}
     try:
         llm = get_llm()
-        history_text = "\n".join(f"{getattr(m, 'type', 'message')}: {_content_text(getattr(m, 'content', ''))}" for m in history[-6:])
-        prompt = f"Contract context available: {'yes' if contract_context else 'no'}\nRecent conversation:\n{history_text or '(none)'}\n\nCurrent request:\n{query}"
+        history_text = "\n".join(
+            f"{getattr(m, 'type', 'message')}: {_content_text(getattr(m, 'content', ''))}" for m in history[-6:]
+        )
+        prompt = (
+            f"Contract context available: {'yes' if contract_context else 'no'}\n"
+            f"Recent conversation:\n{history_text or '(none)'}\n\n"
+            f"Current request:\n{query}"
+        )
         result = await llm.ainvoke([SystemMessage(content=QUERY_ROUTER_PROMPT), HumanMessage(content=prompt)])
         parsed = _json_object(_content_text(getattr(result, 'content', result))) or {}
         status = str(parsed.get("status", "")).strip().upper()
         response = str(parsed.get("response", "")).strip()
+
         if status not in {"ANSWERABLE", "NEEDS_CLARIFICATION", "OUT_OF_SCOPE", "INSUFFICIENT_EVIDENCE"}:
             status, response = _fallback_route(query, contract_context)
-        if status == "ANSWERABLE":
+
+        # Proceed to retrieval for both ANSWERABLE and NEEDS_CLARIFICATION so LLM can give a legal baseline first
+        if status in {"ANSWERABLE", "NEEDS_CLARIFICATION"}:
             return {"final_answer": None, "retrieved_docs": [], "citation_verified": False}
+
         if not response:
             status, response = _fallback_route(query, contract_context)
-            if status == "ANSWERABLE":
-                status, response = "NEEDS_CLARIFICATION", "আপনার আইনি প্রশ্নটি একটু বিস্তারিতভাবে ব্যাখ্যা করবেন?"
+            if status in {"ANSWERABLE", "NEEDS_CLARIFICATION"}:
+                return {"final_answer": None, "retrieved_docs": [], "citation_verified": False}
+
         logger.info("[classify_query_node] status=%s query=%r", status, query[:100])
         return {"final_answer": response, "retrieved_docs": [], "citation_verified": False}
     except Exception:
         logger.exception("[classify_query_node] failed; using fallback router")
         status, response = _fallback_route(query, contract_context)
-        return {"final_answer": response if status != "ANSWERABLE" else None, "retrieved_docs": [], "citation_verified": False}
+        return {
+            "final_answer": response if status not in {"ANSWERABLE", "NEEDS_CLARIFICATION"} else None,
+            "retrieved_docs": [],
+            "citation_verified": False
+        }
 
 
 def route_after_classification(state: QAState) -> str:
@@ -118,10 +141,10 @@ async def retrieve_node(state: QAState) -> dict:
     history_messages = state.get("messages", [])
     context_docs = []
 
-    # 1. Primary Statutory Retrieval (Async + HyDE History)
+    # 1. Primary Statutory Retrieval (top_k=8 for richer statutory context)
     try:
         llm = get_llm()
-        results = await hybrid_retriever.aretrieve(query, history=history_messages, llm_instance=llm, top_k=5)
+        results = await hybrid_retriever.aretrieve(query, history=history_messages, llm_instance=llm, top_k=8)
         for r in results:
             content_text = r.get("text") or r.get("content", "")
             if content_text and content_text.strip():
@@ -135,8 +158,10 @@ async def retrieve_node(state: QAState) -> dict:
                     "paths": r.get("paths", []),
                     "metadata": r.get("metadata", {}),
                 })
-        logger.info(f"[retrieve_node] {len(context_docs)} statute docs: "
-                    f"{[(d.get('act'), d.get('section'), d.get('paths')) for d in context_docs]}")
+        logger.info(
+            f"[retrieve_node] {len(context_docs)} statute docs: "
+            f"{[(d.get('act'), d.get('section'), d.get('paths')) for d in context_docs]}"
+        )
     except Exception as e:
         logger.exception(f"[retrieve_node] Hybrid Retriever fetch error: {e}")
 
@@ -167,8 +192,7 @@ async def retrieve_node(state: QAState) -> dict:
 
 
 async def generate_answer_node(state: QAState) -> dict:
-    """রিট্রিভ হওয়া ধারার ওপর ভিত্তি করে উত্তর তৈরি করে।
-    সাইটেশন তৈরির দায়িত্ব chat.py-র (সেখানে retrieved_docs-এর বিপরীতে যাচাই হয়)।"""
+    """রিট্রিভ হওয়া ধারার ওপর ভিত্তি করে সুন্দর ও কাঠামোগত উত্তর তৈরি করে।"""
     query = state.get("query", "")
     raw_docs = state.get("retrieved_docs", []) or []
     history_messages = state.get("messages", [])
@@ -190,12 +214,12 @@ async def generate_answer_node(state: QAState) -> dict:
         if d.get("source_type") == "precedent":
             precedent_blocks.append(f"• [Case Precedent]: {title}\n  Summary: {text}")
         else:
-            header_info = f"{act} | {sec}".strip(" |")
+            header_info = f"{act} | Section: {sec}".strip(" |")
             if title:
                 header_info += f" ({title})"
-            statutory_blocks.append(f"=== STATUTE: {header_info} ===\nText: {text}")
+            statutory_blocks.append(f"=== STATUTE: {header_info} ===\n{text}")
 
-    # কনটেক্সট না থাকলে এলএলএম কল নয়: মেমোরি থেকে মনগড়া উত্তর আসার ঝুঁকি বন্ধ
+    # কনটেক্সট না থাকলে মেমোরি থেকে মনগড়া উত্তর আসার ঝুঁকি বন্ধ
     if not statutory_blocks and not precedent_blocks and not contract_context:
         logger.warning(f"[generate_answer_node] no context for query: {query[:80]!r}")
         return {
@@ -206,27 +230,32 @@ async def generate_answer_node(state: QAState) -> dict:
 
     context_sections = []
     
-    # কন্ট্রাক্ট কনটেক্সট থাকলে সেটি সবার আগে পুশ করা হবে
     if contract_context:
-        context_sections.append(f"=== CURRENT CONTRACT ANALYSIS (CRITICAL CONTEXT) ===\n{contract_context}\n===================================================")
+        context_sections.append(
+            f"=== CURRENT CONTRACT CONTEXT ===\n{contract_context}\n================================"
+        )
 
     if statutory_blocks:
-        context_sections.append("RELEVANT BANGLADESH STATUTES:\n" + "\n\n".join(statutory_blocks))
+        context_sections.append("VERIFIED_STATUTORY_CONTEXT:\n" + "\n\n".join(statutory_blocks))
     if precedent_blocks:
-        context_sections.append("RECENT COURT PRECEDENTS & NEWS REFERENCES:\n" + "\n\n".join(precedent_blocks))
+        context_sections.append("VERIFIED_CASE_CONTEXT:\n" + "\n\n".join(precedent_blocks))
         
     context_text = "\n\n---\n\n".join(context_sections)
 
-    user_prompt = f"Verified Context:\n{context_text}\n\nClient Legal Query:\n{query}"
+    user_prompt = (
+        f"{context_text}\n\n"
+        f"================================\n"
+        f"Client Legal Query:\n{query}\n\n"
+        f"Instructions: Provide a well-structured, clear, and accurate response based strictly on the verified context above."
+    )
 
     try:
         llm = get_llm()
         messages = [SystemMessage(content=SYSTEM_QA_PROMPT)]
         if history_messages:
-            messages.extend(history_messages)
+            messages.extend(history_messages[-6:])
         messages.append(HumanMessage(content=user_prompt))
 
-        # Fast API-তে নন-ব্লকিং কলের জন্য
         response = await llm.ainvoke(messages)
         
         answer_text = ""
@@ -243,7 +272,7 @@ async def generate_answer_node(state: QAState) -> dict:
 
     except Exception as exc:
         logger.error(f"[generate_answer_node] Error invoking LLM: {exc}")
-        raise exc  # Exception থ্রো করা হচ্ছে যাতে chat.py 500 দেয় এবং ক্রেডিট না কাটে
+        raise exc
 
     # Citation verifier
     is_verified = False
@@ -252,14 +281,6 @@ async def generate_answer_node(state: QAState) -> dict:
         is_verified = bool(result.get("citation_verified", False))
     except Exception as e:
         logger.error(f"[generate_answer_node] verifier error: {e}")
-
-    # ✅ FIX: সাইটেশন না মিললেও এআই-এর উত্তর আটকে দেওয়া হলো না (chat.py তে এটি ফিল্টার হবে)
-    # if verification_texts and not is_verified:
-    #     answer_text = json.dumps({
-    #         "detailed_answer": "প্রাসঙ্গিক আইনগত তথ্য পাওয়া গেলেও উত্তরের উদ্ধৃতিগুলো উৎসের সঙ্গে নির্ভরযোগ্যভাবে যাচাই করা যায়নি। ভুল আইনি তথ্য এড়াতে নিশ্চিত উত্তর দিচ্ছি না। অনুগ্রহ করে প্রশ্নটি আরও নির্দিষ্ট করুন অথবা প্রাসঙ্গিক আইন/ধারার তথ্য দিন।",
-    #         "cited_sections": [],
-    #         "suggested_next_steps": [],
-    #     }, ensure_ascii=False)
 
     return {
         "final_answer": answer_text,

@@ -1,6 +1,7 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from qdrant_client import QdrantClient, models
 from app.config import settings
+
 
 class QdrantVectorManager:
     def __init__(self):
@@ -12,23 +13,35 @@ class QdrantVectorManager:
         if not self.qdrant_url or not self.qdrant_api_key:
             raise ValueError("[CRITICAL ERROR] QDRANT_URL or QDRANT_API_KEY is missing!")
 
-        # ✅ cloud_inference=True যুক্ত করা হলো
+        # Cloud inference enabled for Qdrant server-side embeddings
         self.client = QdrantClient(
             url=self.qdrant_url, 
             api_key=self.qdrant_api_key, 
             cloud_inference=True
         )
 
-    def similarity_search(self, query: str, limit: int = 5, **kwargs) -> List[Dict[str, Any]]:
+    def similarity_search(
+        self, 
+        query: str, 
+        limit: int = 5, 
+        query_filter: Optional[models.Filter] = None, 
+        **kwargs
+    ) -> List[Dict[str, Any]]:
         search_limit = kwargs.get("top_k", limit)
+        if query_filter is None and "filter" in kwargs:
+            query_filter = kwargs["filter"]
 
-        # Qdrant-এর সার্ভারেই এমবেডিং তৈরি হবে
+        # E5 embedding model requires "query: " prefix for optimal retrieval accuracy
+        clean_query = query.strip()
+        formatted_query = f"query: {clean_query}" if not clean_query.lower().startswith("query:") else clean_query
+
         query_response = self.client.query_points(
             collection_name=self.collection_name,
             query=models.Document(
-                text=query,
+                text=formatted_query,
                 model="intfloat/multilingual-e5-small"
             ),
+            query_filter=query_filter,
             limit=search_limit,
             with_payload=True,
         )
@@ -46,16 +59,17 @@ class QdrantVectorManager:
                 "score": getattr(hit, "score", 0.0),
                 "text": text_content, 
                 "content": text_content,
-                "act": metadata.get("act", ""), 
-                "section": metadata.get("section", ""),
-                "title": metadata.get("title", ""), 
+                "act": metadata.get("act") or payload.get("act", ""), 
+                "section": metadata.get("section") or payload.get("section", ""),
+                "title": metadata.get("title") or payload.get("title", ""), 
                 "metadata": metadata, 
                 "payload": payload,
             })
         return results
 
     def embed_single(self, text: str) -> List[float]:
-        # Qdrant নিজেই এমবেডিং করছে, তাই এই মেথডটি ফাঁকা
+        # Qdrant cloud inference handles embedding directly
         return []
+
 
 vector_manager = QdrantVectorManager()

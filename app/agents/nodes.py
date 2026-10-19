@@ -1,10 +1,9 @@
 import json
 import re
 import logging
-from typing import Dict, Any
 from app.services.retriever import hybrid_retriever
 from app.services.llm_provider import get_llm
-from app.agents.prompts import SYSTEM_CONTRACT_RISK_PROMPT, SYSTEM_PLAYBOOK_MATCHING_PROMPT
+from app.agents.prompts import SYSTEM_CONTRACT_RISK_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +20,7 @@ def retrieve_statutes_node(state: dict) -> dict:
 
     try:
         # Retrieve statutory provisions (The Contract Act, Labour Act, Arbitration Act, etc.)
-        retrieved_laws = hybrid_retriever.retrieve(query_snippet, top_k=5)
+        retrieved_laws = hybrid_retriever.retrieve(query_snippet, top_k=8)
     except Exception as exc:
         logger.error(f"[retrieve_statutes_node] Retrieval failed: {exc}")
         retrieved_laws = []
@@ -95,12 +94,16 @@ CONTRACT TEXT FOR AUDIT:
         content = re.sub(r"^```(?:json)?\s*", "", content, flags=re.MULTILINE)
         content = re.sub(r"\s*```$", "", content, flags=re.MULTILINE).strip()
 
+        start, end = content.find("{"), content.rfind("}")
+        if start != -1 and end > start:
+            content = content[start:end + 1]
+
         analysis = json.loads(content)
 
     except Exception as e:
         logger.error(f"[analyze_risk_node] Failed to execute or parse risk analysis: {e}")
         analysis = {
-            "overall_risk_score": "MODERATE",
+            "overall_risk_score": "MEDIUM",
             "memo_summary": "Contract analyzed under general Bangladesh legal principles.",
             "detected_risks": []
         }

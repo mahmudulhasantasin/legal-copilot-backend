@@ -6,6 +6,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+
 class CustomFallbackLLM:
     """একটি কাস্টম ফলব্যাক ক্লাস, যা প্রাইমারি মডেল ফেইল করলে স্বয়ংক্রিয়ভাবে ফলব্যাক মডেল ব্যবহার করবে।"""
     def __init__(self, primary, fallback):
@@ -30,6 +31,7 @@ class CustomFallbackLLM:
                 return self.fallback.invoke(*args, **kwargs)
             raise e
 
+
 def get_llm():
     """Returns an LLM instance with Gemini as primary and Groq as guaranteed fallback."""
     gemini_key = (
@@ -42,11 +44,11 @@ def get_llm():
     primary_llm = None
     fallback_llm = None
 
-    # Fallback: Groq (llama-3.1-8b-instant ডেপ্রিকেটেড, তাই gpt-oss-20b ব্যবহার করা হলো)
+    # Fallback: Groq
     if groq_key:
         try:
             fallback_llm = ChatGroq(
-                model="openai/gpt-oss-20b", # ✅ নতুন মডেল
+                model="openai/gpt-oss-20b",
                 api_key=groq_key,
                 temperature=0.2,
                 max_retries=1,
@@ -64,6 +66,7 @@ def get_llm():
             primary_llm = ChatGoogleGenerativeAI(
                 model="gemini-flash-latest",
                 google_api_key=gemini_key,
+                temperature=0.2,
                 max_retries=0,          
                 timeout=60.0            
             )
@@ -71,7 +74,6 @@ def get_llm():
         except Exception as exc:
             logger.warning(f"Failed to initialize Gemini: {exc}")
 
-    # ✅ Custom Fallback Wrapper ব্যবহার করা হলো
     if primary_llm and fallback_llm:
         return CustomFallbackLLM(primary=primary_llm, fallback=fallback_llm)
     elif primary_llm:
