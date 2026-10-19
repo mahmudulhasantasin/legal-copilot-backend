@@ -6,25 +6,34 @@ from qdrant_client.models import Distance, VectorParams
 from app.config import settings
 
 class QdrantVectorManager:
-    """Manages Qdrant vector operations using Hugging Face API for embeddings."""
+    """Manages Qdrant vector operations using Jina AI API for embeddings."""
 
     def __init__(self):
         self.qdrant_url = getattr(settings, "QDRANT_URL", None)
         self.qdrant_api_key = getattr(settings, "QDRANT_API_KEY", None)
-        self.collection_name = getattr(settings, "QDRANT_COLLECTION_NAME", "bd_laws_e5_small")
         
-        # ✅ Hugging Face API টোকেন (Render-এর Environment-এ HF_TOKEN হিসেবে সেট করতে হবে)
-        self.hf_token = os.getenv("HF_TOKEN", "")
-        # ✅ আপনার লোকাল স্ক্রিপ্ট যে মডেল ব্যবহার করছে, ঠিক সেই মডেলটিই এখানে ব্যবহার হচ্ছে
-        self.hf_api_url = "https://router.huggingface.co/hf-inference/models/intfloat/multilingual-e5-small/pipeline/feature-extraction"
-        if self.qdrant_url and self.qdrant_api_key:
-            print("Connecting to Qdrant Cloud via API...")
-            self.client = QdrantClient(url=self.qdrant_url, api_key=self.qdrant_api_key, timeout=60.0)
-        else:
-            print("Using Local Qdrant Database (./local_qdrant_data)...")
-            self.client = QdrantClient(path="./local_qdrant_data")
+        # ✅ ক্লাউড কানেকশন চেক (লোকাল ফলব্যাক বাদ দেওয়া হলো)
+        if not self.qdrant_url or not self.qdrant_api_key:
+            raise ValueError(
+                "[CRITICAL ERROR] QDRANT_URL or QDRANT_API_KEY is missing! "
+                "Please check your Render Environment Variables."
+            )
+            
+        print("Connecting to Qdrant Cloud...")
+        self.client = QdrantClient(url=self.qdrant_url, api_key=self.qdrant_api_key, timeout=60.0)
 
-        self.dimension = 384 
+        # ✅ আপনার পুরনো ১০২৪ ডাইমেনশনের কালেকশনের নাম (bd_laws_v2) এখানে দিন
+        self.collection_name = getattr(settings, "QDRANT_COLLECTION_NAME", "bd_laws_v2")
+        
+        # ✅ Jina AI API Config
+        self.jina_api_key = os.getenv("JINA_API_KEY", "")
+        if not self.jina_api_key:
+            print("[WARNING] JINA_API_KEY is missing! Chat queries will fail.")
+            
+        self.jina_api_url = "https://api.jina.ai/v1/embeddings"
+        
+        # ✅ Jina v3 মডেল ১০২৪ ডাইমেনশন দেয়
+        self.dimension = 1024 
 
         # Verify collection exists
         try:
@@ -40,35 +49,33 @@ class QdrantVectorManager:
         except Exception as err:
             print(f"[WARN] Failed to verify/create Qdrant collection: {err}")
 
-    def _get_embedding_from_api(self, text: str) -> List[float]:
-        """HF API থেকে ভেক্টর নিয়ে আসে (রেন্ডারে কোনো মেমরি খরচ করে না)।"""
-        headers = {}
-        if self.hf_token:
-            headers["Authorization"] = f"Bearer {self.hf_token}"
-            
+    def _get_embedding_from_api(self, text: str, task: str = "retrieval.query") -> List[float]:
+        """Jina AI API থেকে ভেক্টর নিয়ে আসে।"""
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.jina_api_key}"
+        }
+        
         payload = {
-            "inputs": [text],
-            "options": {"wait_for_model": True}
+            "model": "jina-embeddings-v3",
+            "input": [text],
+            "task": task,
+            "dimensions": self.dimension
         }
         
         try:
-            response = requests.post(self.hf_api_url, headers=headers, json=payload, timeout=30)
+            response = requests.post(self.jina_api_url, headers=headers, json=payload, timeout=30)
             response.raise_for_status()
-            # HF API সাধারণত [[0.1, 0.2, ...]] এই ফরম্যাটে রেসপন্স দেয়
-            return response.json()[0]
+            return response.json()["data"][0]["embedding"]
         except Exception as e:
-            print(f"[ERROR] HF API embedding failed: {e}")
-            # ফলব্যাক: যাতে অ্যাপ ক্র্যাশ না করে
+            print(f"[ERROR] Jina API embedding failed: {e}")
             return [0.0] * self.dimension 
 
     def embed_single(self, text: str) -> List[float]:
-        # E5 মডেলের জন্য 'query: ' প্রিফিক্স
-        prefixed_text = f"query: {text}"
-        return self._get_embedding_from_api(prefixed_text)
+        return self._get_embedding_from_api(text, task="retrieval.query")
 
     def embed_batch(self, texts: List[str]) -> List[List[float]]:
-        prefixed_texts = [f"passage: {t}" for t in texts]
-        return [self._get_embedding_from_api(t) for t in prefixed_texts]
+        return [self._get_embedding_from_api(t, task="retrieval.passage") for t in texts]
 
     def similarity_search(self, query: str, limit: int = 5, **kwargs) -> List[Dict[str, Any]]:
         search_limit = kwargs.get("top_k", limit)
@@ -93,20 +100,13 @@ class QdrantVectorManager:
         results = []
         for hit in search_result:
             payload = getattr(hit, "payload", {}) or {}
-            score = getattr(hit, "score", 0.0)
-            text_content = payload.get("text") or payload.get("content") or ""
             metadata = payload.get("metadata", {})
-            
+            text_content = payload.get("text") or payload.get("content") or ""
             results.append({
-                "id": hit.id,
-                "score": score,
-                "text": text_content,
-                "content": text_content,
-                "act": metadata.get("act", ""),
-                "section": metadata.get("section", ""),
-                "title": metadata.get("title", ""),
-                "metadata": metadata,
-                "payload": payload,
+                "id": hit.id, "score": getattr(hit, "score", 0.0),
+                "text": text_content, "content": text_content,
+                "act": metadata.get("act", ""), "section": metadata.get("section", ""),
+                "title": metadata.get("title", ""), "metadata": metadata, "payload": payload,
             })
         return results
 

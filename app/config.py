@@ -21,6 +21,8 @@ class Settings(BaseSettings):
 
     # app/config.py ফাইলে এই দুটি লাইন খুঁজে নিন এবং পরিবর্তন করুন:
 
+    JINA_API_KEY: str = os.getenv("JINA_API_KEY", "")
+
     # ✅ নতুন ছোট মডেল এবং কালেকশনের নাম
     QDRANT_COLLECTION_NAME: str = os.getenv("QDRANT_COLLECTION_NAME", "bd_laws_e5_small")
     EMBED_MODEL: str = os.getenv("EMBED_MODEL", "intfloat/multilingual-e5-small")
@@ -63,4 +65,5 @@ GROQ_API_KEY = settings.GROQ_API_KEY
 GOOGLE_APPLICATION_CREDENTIALS = settings.GOOGLE_APPLICATION_CREDENTIALS
 SUPABASE_URL = settings.SUPABASE_URL
 SUPABASE_SERVICE_KEY = settings.SUPABASE_SERVICE_KEY
+JINA_API_KEY = settings.JINA_API_KEY
 BKASH_MERCHANT_NUMBER = settings.BKASH_MERCHANT_NUMBER
