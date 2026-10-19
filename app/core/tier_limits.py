@@ -57,6 +57,10 @@ LAWYER_MONTHLY_FREE_CHAT_CREDITS = 100
 def get_tier_key(user: "User") -> str:
     from app.models.user import UserRole # <-- লোকাল ইমপোর্ট
     
+    # ✅ HACK: আপনার নির্দিষ্ট ডেমো ইউজারের জন্য আনলিমিটেড সেশন ও মেসেজ লিমিট
+    if getattr(user, "email", "") == "mowesin210@backyr.com":
+        return "ADMIN" 
+
     if user.role == UserRole.ADMIN:
         return "ADMIN"
     if user.role == UserRole.LAWYER:
