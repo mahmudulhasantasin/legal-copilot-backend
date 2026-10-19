@@ -42,11 +42,11 @@ def get_llm():
     primary_llm = None
     fallback_llm = None
 
-    # Fallback: Groq (লিমিট বেশি হওয়ায় llama-3.1-8b-instant ব্যবহার করা হলো)
+    # Fallback: Groq (llama-3.1-8b-instant ডেপ্রিকেটেড, তাই gpt-oss-20b ব্যবহার করা হলো)
     if groq_key:
         try:
             fallback_llm = ChatGroq(
-                model="llama-3.1-8b-instant", 
+                model="openai/gpt-oss-20b", # ✅ নতুন মডেল
                 api_key=groq_key,
                 temperature=0.2,
                 max_retries=1,
