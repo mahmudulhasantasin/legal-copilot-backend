@@ -45,25 +45,44 @@ def _parse_json_object(text: str) -> dict:
     return json.loads(text[start:end + 1])
 
 
-# NEW PROMPT: HyDE (Hypothetical Document Embeddings) and Legal Translation
+# ✅ NEW PROMPT: আরও কঠোর এবং কী-ওয়ার্ড ফোকাসড
 ROUTER_PROMPT = """You are an expert Legal Query Reformulator for Bangladesh Law.
 Your core task is to bridge the "Semantic Gap" between a user's layman terms and formal legal terminology.
 
-CRITICAL INSTRUCTION: Do NOT just directly translate. EXPAND the core legal concept into formal synonyms to maximize vector search accuracy.
-For example: If a user says "বিনা নোটিশে বের করে দেওয়া" (fired without notice), do not just write "বরখাস্ত". Expand it to encompass all possibilities: "মালিক কর্তৃক শ্রমিকের চাকুরীর অবসান, ছাঁটাই, ডিসচার্জ, বরখাস্ত ব্যতীত চাকরিচ্যুতি, Termination simpliciter, Retrenchment".
+CRITICAL RULES:
+1. If the user mentions "contract", "চুক্তি", or "vhong" (breach), you MUST detect "The Contract Act, 1872" as the act.
+2. If the user mentions "labour", "শ্রম", "chakri", or "employee", detect "Bangladesh Labour Act, 2006".
+3. NEVER hallucinate sections if you are not 100% sure. Leave `inferred_sections` empty if unsure.
+4. EXPAND the query with formal synonyms (e.g., breach -> termination, damages, compensation, rescission).
 
 Analyze the user's query (and chat history if provided) and respond ONLY with a strict JSON object:
 {
-  "detected_acts": ["Official name of Act 1", "Official name of Act 2"],
-  "inferred_sections": ["list", "of", "likely", "sections", "if", "you", "know", "them"],
-  "optimized_query": "Expanded semantic search string containing formal legal concepts, legal mechanisms, and synonyms in both Bengali and English."
+  "detected_acts": ["Official name of Act"],
+  "inferred_sections": [],
+  "optimized_query": "Expanded semantic search string in both Bengali and English."
 }"""
 
 
+# ✅ SMART FALLBACK: LLM ফেইল করলে কী-ওয়ার্ড দেখে আইন অনুমান করবে
 def _fallback(user_query: str, explicit: List[str]) -> AnalyzedQuery:
-    return AnalyzedQuery(detected_acts=[], explicit_sections=explicit, inferred_sections=[], optimized_query=user_query[:250])
+    detected_acts = []
+    q_lower = user_query.lower()
+    
+    if "contract" in q_lower or "চুক্তি" in q_lower or "vhong" in q_lower:
+        detected_acts.append("The Contract Act, 1872")
+    if "labour" in q_lower or "শ্রম" in q_lower or "chakri" in q_lower:
+        detected_acts.append("Bangladesh Labour Act, 2006")
+    if "penal" in q_lower or "crime" in q_lower or "শাস্তি" in q_lower:
+        detected_acts.append("The Penal Code, 1860")
 
-# NEW: Added 'history' parameter
+    return AnalyzedQuery(
+        detected_acts=detected_acts, 
+        explicit_sections=explicit, 
+        inferred_sections=[], 
+        optimized_query=user_query[:250]
+    )
+
+
 def analyze_query_dynamically(user_query: str, history: list = None, llm_instance=None) -> AnalyzedQuery:
     explicit = _extract_explicit_sections(user_query)
 
@@ -77,7 +96,6 @@ def analyze_query_dynamically(user_query: str, history: list = None, llm_instanc
     # Format Chat History for LLM
     history_context = ""
     if history:
-        # Get the last 4 messages for recent context
         history_text = "\n".join([f"{msg.type}: {msg.content}" for msg in history[-4:]])
         history_context = f"Recent Chat History:\n{history_text}\n\n"
 
@@ -110,5 +128,5 @@ def analyze_query_dynamically(user_query: str, history: list = None, llm_instanc
         logger.info(f"[analyzer] acts={result.detected_acts} optimized_query='{result.optimized_query}'")
         return result
     except Exception as exc:
-        logger.exception(f"[analyze_query_dynamically] LLM analysis failed: {exc}")
+        logger.exception(f"[analyze_query_dynamically] LLM analysis failed (likely 429). Using fallback.")
         return _fallback(user_query, explicit)
