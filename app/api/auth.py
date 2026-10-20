@@ -114,7 +114,7 @@ class UserResponse(BaseModel):
     is_active: bool
     is_verified: bool
     enterprise_id: Optional[int] = None
-    profile_photo_url: Optional[str] = None  # ✅ FIX: প্রোফাইল ছবি রেসপন্সে যোগ করা হলো
+    profile_photo_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -336,16 +336,13 @@ async def login_with_google(payload: GoogleLoginRequest, db: AsyncSession = Depe
 
 @router.post("/onboard/lawyer")
 async def onboard_as_lawyer(payload: OnboardLawyerRequest, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    # ১. ইউজার GENERAL না হলে ব্লক
     if current_user.role != UserRole.GENERAL:
         raise HTTPException(400, "You already have an active role. You cannot apply as a lawyer.")
 
-    # ২. চেক: এন্টারপ্রাইজ অ্যাপ্লিকেশন পেন্ডিং আছে কি না
     pending_ent = await db.scalar(select(Enterprise).where(Enterprise.pending_admin_user_id == current_user.id))
     if pending_ent:
         raise HTTPException(400, "You have a pending enterprise application. You cannot apply as a lawyer.")
 
-    # ৩. চেক: লইয়ার প্রোফাইল আগে থেকেই আছে কি না
     existing_profile = await db.scalar(select(LawyerProfile).where(LawyerProfile.user_id == current_user.id))
     if existing_profile:
         if existing_profile.status == LawyerStatus.APPROVED:
@@ -356,7 +353,6 @@ async def onboard_as_lawyer(payload: OnboardLawyerRequest, current_user: User = 
             raise HTTPException(400, "Your lawyer application was rejected. You cannot apply again.")
         raise HTTPException(400, "You already have a lawyer profile.")
 
-    # নতুন প্রোফাইল তৈরি
     db.add(LawyerProfile(
         user_id=current_user.id, bar_council_id=payload.bar_council_id.strip(),
         experience_years=payload.experience_years, specializations=payload.specializations,
@@ -367,16 +363,13 @@ async def onboard_as_lawyer(payload: OnboardLawyerRequest, current_user: User = 
 
 @router.post("/onboard/enterprise")
 async def onboard_as_enterprise(payload: OnboardEnterpriseRequest, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    # ১. ইউজার GENERAL না হলে ব্লক
     if current_user.role != UserRole.GENERAL:
         raise HTTPException(400, "You already have an active role. You cannot register an enterprise.")
 
-    # ২. চেক: লইয়ার অ্যাপ্লিকেশন আগে থেকেই আছে কি না
     existing_lawyer = await db.scalar(select(LawyerProfile).where(LawyerProfile.user_id == current_user.id))
     if existing_lawyer:
         raise HTTPException(400, "You already have a lawyer application. You cannot apply for an enterprise.")
 
-    # ৩. চেক: এন্টারপ্রাইজ অ্যাপ্লিকেশন পেন্ডিং আছে কি না
     existing_ent = await db.scalar(select(Enterprise).where(Enterprise.pending_admin_user_id == current_user.id))
     if existing_ent:
         raise HTTPException(400, "You already have a pending enterprise application.")
@@ -412,3 +405,42 @@ async def onboard_as_enterprise(payload: OnboardEnterpriseRequest, current_user:
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+# ──────────────────────────────────────────────────────────
+# ACCOUNT DELETION (NEW)
+# ──────────────────────────────────────────────────────────
+@router.delete("/me")
+async def delete_my_account(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Soft deletes the current user's account and anonymizes their PII data.
+    This ensures historical records (payments, audits) remain intact for accounting purposes.
+    """
+    if current_user.is_deleted:
+        raise HTTPException(400, "Account is already deleted.")
+
+    # ১. ইউজারকে ডিলিট/ইনঅ্যাক্টিভ মার্ক করা
+    current_user.is_deleted = True
+    current_user.is_active = False
+    
+    # ২. ব্যক্তিগত তথ্য (PII) সম্পূর্ণ রিমুভ বা অ্যানোনিমাইজ করা
+    current_user.full_name = "Deleted User"
+    current_user.email = f"deleted_{current_user.id}_{current_user.email}" # ইমেইল ফ্রি করে দেওয়া হলো
+    current_user.phone = None
+    current_user.profile_photo_url = None
+    current_user.hashed_password = "DELETED_ACCOUNT" # যাতে কেউ লগইন করতে না পারে
+    
+    # ৩. OTP ডাটা ক্লিয়ার করা
+    current_user.otp_code = None
+    current_user.otp_expires_at = None
+
+    # ৪. এন্টারপ্রাইজ মেম্বার হলে কোটা রিলিজ করা (যদি প্রযোজ্য হয়)
+    if current_user.member_credit_quota:
+        current_user.member_credit_quota = 0
+        current_user.member_credit_used = 0
+
+    await db.commit()
+
+    return {"status": "success", "message": "Your account and personal data have been permanently deleted."}
