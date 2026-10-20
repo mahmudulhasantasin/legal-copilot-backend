@@ -71,13 +71,14 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",    # React/Next.js default
-        "http://localhost:5173",    # Vite default
-         "http://localhost:3001",    # রিঅ্যাক্ট লোকাল
-        "https://advotech-copilot.vercel.app/",    
-        "https://*.hf.space",       # হাগিং ফেসের সব সাবডোমেইন
-        "https://outliers-omega.vercel.app"  # (আপাতত টেস্টিংয়ের জন্য, প্রোডাকশনে চাইলে ফ্রন্টএন্ডের ডোমেইন দিবেন), # Update before going live
+        "http://localhost:3000",     
+        "http://localhost:5173",     
+        "http://localhost:3001",     
+        "https://advotech-copilot.vercel.app",  # ✅ স্পেসিফিক লিংক (স্ল্যাশ ছাড়া)
+        "https://outliers-omega.vercel.app"     # ✅ স্পেসিফিক লিংক (স্ল্যাশ ছাড়া)
     ],
+    # ✅ এই ম্যাজিক লাইনটি vercel.app-এর যেকোনো সাবডোমেইনকে অনুমতি দেবে
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
