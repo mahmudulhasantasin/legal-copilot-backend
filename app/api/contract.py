@@ -1,5 +1,5 @@
 import os
-import re  # ✅ নতুন ইমপোর্ট (ফাইলের নাম পরিষ্কার করার জন্য)
+import re
 import uuid
 import logging
 from datetime import datetime, timezone, timedelta
@@ -105,7 +105,6 @@ async def _upload_to_supabase(file_bytes: bytes, filename: str, user_id: int, co
     if not supabase:
         raise HTTPException(500, "Storage service is not configured.")
 
-    # ✅ FIX: ফাইলের নামের ভেতরের স্পেস এবং স্পেশাল ক্যারেক্টার পরিষ্কার করা হলো
     safe_filename = re.sub(r'[^a-zA-Z0-9.\-]', '_', filename)
     safe_name = f"u_{user_id}_{uuid.uuid4().hex[:8]}_{safe_filename}"
     file_path = safe_name
@@ -114,7 +113,6 @@ async def _upload_to_supabase(file_bytes: bytes, filename: str, user_id: int, co
         res = supabase.storage.from_(BUCKET_NAME).upload(
             path=file_path,
             file=file_bytes,
-            # ✅ এখন আসল ফাইল টাইপ পাঠানো হচ্ছে (PDF, DOCX ইত্যাদি)
             file_options={"content-type": content_type or "application/octet-stream"}
         )
         return file_path
@@ -134,13 +132,11 @@ async def upload_and_audit(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # 1. Validate File Type
     allowed_types = [".pdf", ".docx", ".doc", ".png", ".jpg", ".jpeg"]
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in allowed_types:
         raise HTTPException(400, f"Unsupported file format. Allowed: {', '.join(allowed_types)}")
 
-    # 2. Deduct Credits
     cost = get_audit_cost(current_user.role)
     deduction = await check_and_deduct_credits(
         user=current_user,
@@ -151,15 +147,12 @@ async def upload_and_audit(
         commit=False
     )
 
-    # 3. Read and Upload File
     file_bytes = await file.read()
     storage_path = await _upload_to_supabase(
         file_bytes, file.filename, current_user.id, file.content_type
     )
 
-    # 4. Extract Text
     try:
-        # ✅ extract_text_from_file এখন async, তাই await দিতে হবে
         raw_text = await extract_text_from_file(file.filename, file_bytes)
     except Exception as e:
         logger.error(f"[Ingestion] Extraction failed: {e}")
@@ -168,7 +161,6 @@ async def upload_and_audit(
     if not raw_text.strip():
         raise HTTPException(400, "The uploaded document contains no readable text.")
 
-    # 5. Fetch Enterprise Playbook
     playbook_rules = []
     if current_user.is_enterprise_user and current_user.enterprise_id:
         pb = await db.scalar(
@@ -180,7 +172,6 @@ async def upload_and_audit(
         if pb and pb.rules_json:
             playbook_rules = pb.rules_json
 
-    # 6. Run LangGraph Analysis
     agent_output = await analyze_contract_risk_async(
         contract_text=raw_text[:30000],
         playbook_rules=playbook_rules
@@ -189,7 +180,6 @@ async def upload_and_audit(
     detected_risks = agent_output.get("detected_risks", [])
     memo_summary = agent_output.get("memo_summary", "Contract analyzed successfully.")
 
-    # 7. Format Clauses
     ui_clauses = []
     for idx, risk in enumerate(detected_risks, start=1):
         severity = str(risk.get("severity", "MODERATE")).upper()
@@ -220,7 +210,6 @@ async def upload_and_audit(
 
     counts, risk_score, risk_enum = _calculate_metrics(ui_clauses)
 
-    # 8. Save to Database
     contract = Contract(
         user_id=current_user.id,
         enterprise_id=current_user.enterprise_id if current_user.is_enterprise_user else None,
@@ -246,7 +235,6 @@ async def upload_and_audit(
     )
     db.add(memo)
     
-    # 9. Commit
     await db.commit()
     await db.refresh(contract)
     await db.refresh(memo)
@@ -270,13 +258,13 @@ async def request_lawyer_verification(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # 1. Fetch Memo
     memo = await db.scalar(
         select(ContractMemo)
         .join(Contract, ContractMemo.contract_id == Contract.id)
         .where(
             Contract.id == contract_id,
-            Contract.user_id == current_user.id
+            Contract.user_id == current_user.id,
+            Contract.deleted_at == None # ✅ ডিলিট হওয়া চুক্তি ভেরিফাই করা যাবে না
         )
     )
     if not memo:
@@ -284,7 +272,6 @@ async def request_lawyer_verification(
     if memo.hitl_status != HITLStatus.NOT_REQUESTED:
         raise HTTPException(400, f"Verification already requested. Status: {memo.hitl_status.value}")
 
-    # 2. Deduct Credits
     split = get_lawyer_verification_split()
     cost_credits = int(split["credits_to_deduct"])
     
@@ -298,7 +285,6 @@ async def request_lawyer_verification(
         commit=False
     )
 
-    # 3. Update Memo
     now = datetime.now(timezone.utc)
     memo.hitl_status = HITLStatus.QUEUED_FOR_LAWYER
     memo.hitl_requested_at = now
@@ -308,12 +294,10 @@ async def request_lawyer_verification(
     memo.lawyer_payout_bdt = split["lawyer_payout_bdt"]
     memo.platform_fee_bdt = split["platform_fee_bdt"]
 
-    # 4. Trigger Ranking Algorithm
     await db.flush()
     success = await generate_initial_offer(db, memo)
     
     if not success:
-        # ✅ ডাটাবেসে রিফান্ড প্রসেস করা হলো
         await refund_credits(
             db=db, 
             user=current_user, 
@@ -345,14 +329,19 @@ async def get_my_contracts(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    stmt = select(Contract, ContractMemo).join(ContractMemo).where(Contract.user_id == current_user.id)
+    # ✅ FIX: deleted_at == None যুক্ত করা হলো, যাতে ডিলিট হওয়া চুক্তি এখানে না আসে
+    stmt = select(Contract, ContractMemo).join(ContractMemo).where(
+        Contract.user_id == current_user.id,
+        Contract.deleted_at == None
+    )
     
     if current_user.is_enterprise_user and current_user.enterprise_id:
         stmt = select(Contract, ContractMemo).join(ContractMemo).where(
             or_(
                 Contract.user_id == current_user.id,
                 Contract.enterprise_id == current_user.enterprise_id
-            )
+            ),
+            Contract.deleted_at == None # ✅ এখানেও যোগ করা হলো
         )
         
     stmt = stmt.order_by(desc(Contract.created_at)).limit(limit).offset(offset)
@@ -372,6 +361,33 @@ async def get_my_contracts(
     ]
 
 
+# ✅ নতুন এন্ডপয়েন্ট: চুক্তি ডিলিট করা (Soft Delete)
+@router.delete("/{contract_id}")
+async def delete_contract(
+    contract_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Soft deletes a contract so it disappears from the user's archive.
+    """
+    contract = await db.scalar(
+        select(Contract).where(
+            Contract.id == contract_id,
+            Contract.user_id == current_user.id,
+            Contract.deleted_at == None
+        )
+    )
+    if not contract:
+        raise HTTPException(404, "Contract not found or already deleted.")
+    
+    # Soft delete by setting deleted_at timestamp
+    contract.deleted_at = datetime.now(timezone.utc)
+    await db.commit()
+    
+    return {"status": "success", "message": "Contract deleted successfully."}
+
+
 @router.get("/{contract_id}/download")
 async def get_download_url(
     contract_id: int,
@@ -384,7 +400,8 @@ async def get_download_url(
         .outerjoin(ContractMemo, Contract.id == ContractMemo.contract_id)
         .where(
             Contract.id == contract_id,
-            Contract.user_id == current_user.id
+            Contract.user_id == current_user.id,
+            Contract.deleted_at == None # ✅ ডিলিট হওয়া চুক্তি ডাউনলোড করা যাবে না
         )
     )
     row = result.first()
