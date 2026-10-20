@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+# ✅ FIX: BackgroundTasks ইমপোর্ট করা হলো
+from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, desc, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +29,9 @@ from app.models.audit import (
     Payment, PaymentStatus,
     AuditLog, AuditAction, AuditSeverity,
 )
+
+# ✅ FIX: ইমেইল সার্ভিস ইমপোর্ট করা হলো
+from app.services.email_service import send_lawyer_approved_email
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin", tags=["System Admin"])
@@ -181,6 +185,7 @@ async def list_pending_lawyers(
 @router.post("/lawyers/{lawyer_id}/approve")
 async def approve_lawyer(
     lawyer_id: int,
+    background_tasks: BackgroundTasks,  # ✅ FIX: BackgroundTasks যোগ করা হলো
     admin: User = Depends(check_is_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -207,6 +212,13 @@ async def approve_lawyer(
     # ⚠️ THE critical role upgrade — only here
     user.role = UserRole.LAWYER
     user.is_verified = True
+
+    # ✅ FIX: ইমেইল পাঠানোর জন্য ব্যাকগ্রাউন্ড টাস্কে যোগ করা হলো
+    background_tasks.add_task(
+        send_lawyer_approved_email,
+        user.email,
+        user.full_name
+    )
 
     await log_action(
         db, admin, AuditAction.LAWYER_APPROVED,

@@ -263,6 +263,16 @@ async def send_client_verification_complete_email(recipient_email: str, lawyer_n
     )
     return await _send_email(recipient_email, subject, body)
 
+async def send_lawyer_approved_email(recipient_email: str, full_name: str) -> bool:
+    subject = "Your Lawyer Account is Verified!"
+    body = (
+        f"Dear {full_name},\n\n"
+        f"Congratulations! Your application to become a verified lawyer on ContractMind has been approved by the Admin.\n"
+        f"You can now log in to your account and access the Lawyer Workspace to start reviewing contracts.\n\n"
+        f"- ContractMind Team"
+    )
+    return await _send_email(recipient_email, subject, body)
+
 async def send_sla_refund_email(recipient_email: str, contract_title: str, credits: int) -> bool:
     subject = "Refund Processed - Verification Timeout"
     body = (

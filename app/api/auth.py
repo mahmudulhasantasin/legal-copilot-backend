@@ -6,7 +6,6 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-# ✅ Pydantic V2-এর নতুন ইমপোর্ট
 from pydantic import BaseModel, EmailStr, Field, field_validator, ValidationInfo, ConfigDict
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
@@ -43,7 +42,6 @@ class EmailRegisterRequest(BaseModel):
     date_of_birth: Optional[datetime] = None
     gender: Optional[str] = None
 
-    # ✅ Pydantic V2 Validator
     @field_validator("confirm_password")
     @classmethod
     def passwords_match(cls, v: str, info: ValidationInfo) -> str:
@@ -65,7 +63,6 @@ class EnterpriseMemberRegisterRequest(BaseModel):
     date_of_birth: Optional[datetime] = None
     gender: Optional[str] = None
 
-    # ✅ Pydantic V2 Validator
     @field_validator("confirm_password")
     @classmethod
     def passwords_match(cls, v: str, info: ValidationInfo) -> str:
@@ -92,7 +89,6 @@ class GoogleRegisterRequest(BaseModel):
     password: str = Field(min_length=6, max_length=128)
     confirm_password: str
 
-    # ✅ Pydantic V2 Validator
     @field_validator("confirm_password")
     @classmethod
     def passwords_match(cls, v: str, info: ValidationInfo) -> str:
@@ -118,8 +114,8 @@ class UserResponse(BaseModel):
     is_active: bool
     is_verified: bool
     enterprise_id: Optional[int] = None
+    profile_photo_url: Optional[str] = None  # ✅ FIX: প্রোফাইল ছবি রেসপন্সে যোগ করা হলো
 
-    # ✅ Pydantic V2 Config
     model_config = ConfigDict(from_attributes=True)
 
 class OnboardLawyerRequest(BaseModel):
@@ -340,31 +336,51 @@ async def login_with_google(payload: GoogleLoginRequest, db: AsyncSession = Depe
 
 @router.post("/onboard/lawyer")
 async def onboard_as_lawyer(payload: OnboardLawyerRequest, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if current_user.is_enterprise_user:
-        raise HTTPException(400, "Enterprise users cannot apply as lawyers on this account.")
-    existing_profile = await db.scalar(select(LawyerProfile).where(LawyerProfile.user_id == current_user.id))
-    if existing_profile and existing_profile.status == LawyerStatus.APPROVED:
-        raise HTTPException(400, "You are already an approved lawyer.")
+    # ১. ইউজার GENERAL না হলে ব্লক
+    if current_user.role != UserRole.GENERAL:
+        raise HTTPException(400, "You already have an active role. You cannot apply as a lawyer.")
 
+    # ২. চেক: এন্টারপ্রাইজ অ্যাপ্লিকেশন পেন্ডিং আছে কি না
+    pending_ent = await db.scalar(select(Enterprise).where(Enterprise.pending_admin_user_id == current_user.id))
+    if pending_ent:
+        raise HTTPException(400, "You have a pending enterprise application. You cannot apply as a lawyer.")
+
+    # ৩. চেক: লইয়ার প্রোফাইল আগে থেকেই আছে কি না
+    existing_profile = await db.scalar(select(LawyerProfile).where(LawyerProfile.user_id == current_user.id))
     if existing_profile:
-        existing_profile.bar_council_id = payload.bar_council_id.strip()
-        existing_profile.experience_years = payload.experience_years
-        existing_profile.specializations = payload.specializations
-        existing_profile.status = LawyerStatus.PENDING_VERIFICATION
-        existing_profile.rejection_reason = None
-    else:
-        db.add(LawyerProfile(
-            user_id=current_user.id, bar_council_id=payload.bar_council_id.strip(),
-            experience_years=payload.experience_years, specializations=payload.specializations,
-            status=LawyerStatus.PENDING_VERIFICATION,
-        ))
+        if existing_profile.status == LawyerStatus.APPROVED:
+            raise HTTPException(400, "You are already an approved lawyer.")
+        if existing_profile.status == LawyerStatus.PENDING_VERIFICATION:
+            raise HTTPException(400, "You already have a pending lawyer application.")
+        if existing_profile.status == LawyerStatus.REJECTED:
+            raise HTTPException(400, "Your lawyer application was rejected. You cannot apply again.")
+        raise HTTPException(400, "You already have a lawyer profile.")
+
+    # নতুন প্রোফাইল তৈরি
+    db.add(LawyerProfile(
+        user_id=current_user.id, bar_council_id=payload.bar_council_id.strip(),
+        experience_years=payload.experience_years, specializations=payload.specializations,
+        status=LawyerStatus.PENDING_VERIFICATION,
+    ))
     await db.commit()
     return {"status": "success", "message": "Application submitted. Awaiting admin verification."}
 
 @router.post("/onboard/enterprise")
 async def onboard_as_enterprise(payload: OnboardEnterpriseRequest, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # ১. ইউজার GENERAL না হলে ব্লক
     if current_user.role != UserRole.GENERAL:
-        raise HTTPException(400, "Only GENERAL accounts can register a new enterprise.")
+        raise HTTPException(400, "You already have an active role. You cannot register an enterprise.")
+
+    # ২. চেক: লইয়ার অ্যাপ্লিকেশন আগে থেকেই আছে কি না
+    existing_lawyer = await db.scalar(select(LawyerProfile).where(LawyerProfile.user_id == current_user.id))
+    if existing_lawyer:
+        raise HTTPException(400, "You already have a lawyer application. You cannot apply for an enterprise.")
+
+    # ৩. চেক: এন্টারপ্রাইজ অ্যাপ্লিকেশন পেন্ডিং আছে কি না
+    existing_ent = await db.scalar(select(Enterprise).where(Enterprise.pending_admin_user_id == current_user.id))
+    if existing_ent:
+        raise HTTPException(400, "You already have a pending enterprise application.")
+
     if await db.scalar(select(Enterprise).where(Enterprise.name == payload.company_name.strip())):
         raise HTTPException(400, "Company name already registered.")
 
