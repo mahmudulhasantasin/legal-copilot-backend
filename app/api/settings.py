@@ -1,11 +1,15 @@
 import logging
+import os
+import uuid
 from typing import Optional, List, Dict, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from supabase import create_client, Client
 
+from app.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_user, verify_password, get_password_hash
 from app.core.tier_limits import LAWYER_MONTHLY_FREE_CHAT_CREDITS
@@ -15,6 +19,13 @@ from app.models.playbook import Enterprise
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/settings", tags=["Settings & Profile"])
+
+# ──────────────────────────────────────────────────────────
+# SUPABASE SETUP FOR AVATARS
+# ──────────────────────────────────────────────────────────
+SUPABASE_URL = getattr(settings, "SUPABASE_URL", "")
+SUPABASE_KEY = getattr(settings, "SUPABASE_SERVICE_KEY", "")
+BUCKET_NAME = "contracts"  # আমরা একই বাকেটে avatars/ ফোল্ডার বানাবো
 
 
 # ──────────────────────────────────────────────────────────
@@ -50,6 +61,7 @@ class UserSettingsResponse(BaseModel):
     credit_balance: int
     is_verified: bool
     last_login_at: Optional[str]
+    profile_photo_url: Optional[str] = None  # ✅ নতুন যুক্ত হলো
     
     # Role-specific contexts
     enterprise: Optional[EnterpriseSettingsInfo] = None
@@ -92,6 +104,7 @@ async def get_my_settings(
         credit_balance=current_user.credit_balance,
         is_verified=current_user.is_verified,
         last_login_at=current_user.last_login_at.isoformat() if current_user.last_login_at else None,
+        profile_photo_url=current_user.profile_photo_url, # ✅ নতুন যুক্ত হলো
     )
 
     # ── Enterprise Context ──
@@ -146,6 +159,49 @@ async def update_profile(
     await db.refresh(current_user)
     return {"status": "success", "message": "Profile updated."}
 
+
+# ──────────────────────────────────────────────────────────
+# UPLOAD PROFILE PHOTO
+# ──────────────────────────────────────────────────────────
+
+@router.post("/upload-photo")
+async def upload_profile_photo(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Uploads a profile photo to Supabase and updates the user's URL."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise HTTPException(500, "Storage service not configured")
+
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
+        raise HTTPException(400, "Only image files are allowed (jpg, png, webp)")
+
+    file_bytes = await file.read()
+    safe_name = f"avatars/{current_user.id}_{uuid.uuid4().hex[:8]}{ext}"
+
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        supabase.storage.from_(BUCKET_NAME).upload(
+            path=safe_name,
+            file=file_bytes,
+            file_options={"content-type": file.content_type}
+        )
+        
+        # ডাটাবেসে আপডেট
+        current_user.profile_photo_url = safe_name
+        await db.commit()
+        
+        return {"status": "success", "profile_photo_url": safe_name}
+    except Exception as e:
+        logger.error(f"[Supabase] Avatar upload failed: {e}")
+        raise HTTPException(500, "Failed to upload profile photo")
+
+
+# ──────────────────────────────────────────────────────────
+# CHANGE PASSWORD
+# ──────────────────────────────────────────────────────────
 
 @router.post("/change-password")
 async def change_password(

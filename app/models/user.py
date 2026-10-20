@@ -93,6 +93,7 @@ class User(Base):
     # ── Personal Info ──
     date_of_birth: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     gender: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    profile_photo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True) # ✅ নতুন যুক্ত হলো
 
     # ── OTP / Email Verification ──
     otp_code: Mapped[Optional[str]] = mapped_column(String(6), nullable=True)
