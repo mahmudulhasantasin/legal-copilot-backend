@@ -189,11 +189,20 @@ async def upload_profile_photo(
             file_options={"content-type": file.content_type}
         )
         
-        # ডাটাবেসে আপডেট
-        current_user.profile_photo_url = safe_name
+        # ✅ FIX: Supabase থেকে সরাসরি সম্পূর্ণ Public URL বের করা হচ্ছে
+        public_url_res = supabase.storage.from_(BUCKET_NAME).get_public_url(safe_name)
+        
+        # লাইব্রেরি ভার্সন অনুযায়ী রেসপন্স ডিকশনারি বা স্ট্রিং হতে পারে
+        if isinstance(public_url_res, dict):
+            public_url = public_url_res.get("publicURL") or public_url_res.get("publicUrl")
+        else:
+            public_url = str(public_url_res)
+
+        # ✅ ডাটাবেসে ফুল URL সেভ করা হচ্ছে
+        current_user.profile_photo_url = public_url
         await db.commit()
         
-        return {"status": "success", "profile_photo_url": safe_name}
+        return {"status": "success", "profile_photo_url": public_url}
     except Exception as e:
         logger.error(f"[Supabase] Avatar upload failed: {e}")
         raise HTTPException(500, "Failed to upload profile photo")
