@@ -73,7 +73,8 @@ def get_llm() -> BaseChatModel:
             primary_llm = ChatGroq(
                 model="openai/gpt-oss-120b",  # ✅ নতুন সাপোর্টেড মডেল
                 api_key=groq_key,
-                temperature=0.2,
+                temperature=0.1,              # ✅ কমিয়ে 0.1 করা হলো (লুপ এড়াতে)
+                max_tokens=800,               # ✅ সর্বোচ্চ ৮০০ টোকেন (Infinite Loop বন্ধ)
                 max_retries=1,
                 timeout=60.0
             )
@@ -83,14 +84,16 @@ def get_llm() -> BaseChatModel:
     else:
         logger.warning("GROQ_API_KEY is not configured in environment or settings.")
 
-    # ২. Fallback: Gemini Flash (টাইমআউট ৫ সেকেন্ডে নামানো হলো)
+    # ২. Fallback: Gemini Flash 
     if gemini_key:
         try:
             fallback_llm = ChatGoogleGenerativeAI(
                 model="gemini-flash-latest",
                 google_api_key=gemini_key,
+                temperature=0.1,              # ✅ কমিয়ে 0.1 করা হলো
+                max_output_tokens=800,        # ✅ সর্বোচ্চ ৮০০ টোকেন 
                 max_retries=0,          
-                timeout=5.0  # ✅ ৬০ সেকেন্ডের বদলে ৫ সেকেন্ড
+                timeout=5.0                   # ✅ ৬০ সেকেন্ডের বদলে ৫ সেকেন্ড
             )
             logger.info("Gemini fallback LLM initialized successfully.")
         except Exception as exc:
