@@ -74,7 +74,7 @@ app.add_middleware(
         "http://localhost:3000",    # React/Next.js default
         "http://localhost:5173",    # Vite default
          "http://localhost:3001",    # রিঅ্যাক্ট লোকাল
-        "http://localhost:5173",    # ভাইট লোকাল
+        "https://advotech-copilot.vercel.app/",    
         "https://*.hf.space",       # হাগিং ফেসের সব সাবডোমেইন
         "https://outliers-omega.vercel.app"  # (আপাতত টেস্টিংয়ের জন্য, প্রোডাকশনে চাইলে ফ্রন্টএন্ডের ডোমেইন দিবেন), # Update before going live
     ],
