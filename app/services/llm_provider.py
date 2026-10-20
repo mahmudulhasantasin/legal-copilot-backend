@@ -74,7 +74,7 @@ def get_llm() -> BaseChatModel:
                 model="openai/gpt-oss-120b",  # ✅ নতুন সাপোর্টেড মডেল
                 api_key=groq_key,
                 temperature=0.1,              # ✅ কমিয়ে 0.1 করা হলো (লুপ এড়াতে)
-                max_tokens=800,               # ✅ সর্বোচ্চ ৮০০ টোকেন (Infinite Loop বন্ধ)
+                max_tokens=2500,               # ✅ সর্বোচ্চ 2500 টোকেন (Infinite Loop বন্ধ)
                 max_retries=1,
                 timeout=60.0
             )
@@ -91,7 +91,7 @@ def get_llm() -> BaseChatModel:
                 model="gemini-flash-latest",
                 google_api_key=gemini_key,
                 temperature=0.1,              # ✅ কমিয়ে 0.1 করা হলো
-                max_output_tokens=800,        # ✅ সর্বোচ্চ ৮০০ টোকেন 
+                max_output_tokens=2500,        # ✅ সর্বোচ্চ 2500 টোকেন 
                 max_retries=0,          
                 timeout=5.0                   # ✅ ৬০ সেকেন্ডের বদলে ৫ সেকেন্ড
             )
