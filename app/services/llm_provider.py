@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 class CustomFallbackLLM(BaseChatModel):
     """
-    একটি কাস্টম ফলব্যাক ক্লাস, যা প্রাইমারি মডেল (Gemini) ফেইল করলে (429, 404, Timeout) 
-    স্বয়ংক্রিয়ভাবে ফলব্যাক মডেল (Groq) ব্যবহার করবে।
+    একটি কাস্টম ফলব্যাক ক্লাস, যা প্রাইমারি মডেল (Groq) ফেইল করলে (429, 404, Timeout) 
+    স্বয়ংক্রিয়ভাবে ফলব্যাক মডেল (Gemini) ব্যবহার করবে।
     """
     primary: Any
     fallback: Any
@@ -34,7 +34,7 @@ class CustomFallbackLLM(BaseChatModel):
         try:
             return self.primary._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
         except Exception as e:
-            logger.warning(f"[LLM Fallback] Primary LLM (Gemini) failed in sync call: {e}. Switching to Groq...")
+            logger.warning(f"[LLM Fallback] Primary LLM (Groq) failed in sync call: {e}. Switching to Gemini...")
             return self.fallback._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
 
     async def _agenerate(
@@ -47,16 +47,16 @@ class CustomFallbackLLM(BaseChatModel):
         try:
             return await self.primary._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
         except Exception as e:
-            logger.warning(f"[LLM Fallback] Primary LLM (Gemini) failed in async call: {e}. Switching to Groq...")
+            logger.warning(f"[LLM Fallback] Primary LLM (Groq) failed in async call: {e}. Switching to Gemini...")
             return await self.fallback._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
 
     @property
     def _identifying_params(self) -> dict:
-        return {"primary": "Gemini", "fallback": "Groq"}
+        return {"primary": "Groq", "fallback": "Gemini"}
 
 
 def get_llm() -> BaseChatModel:
-    """Returns an LLM instance with Gemini as primary and Groq as guaranteed fallback."""
+    """Returns an LLM instance with Groq as primary and Gemini as guaranteed fallback."""
     gemini_key = (
         getattr(settings, "GEMINI_API_KEY", None)
         or os.getenv("GEMINI_API_KEY")
@@ -67,32 +67,32 @@ def get_llm() -> BaseChatModel:
     primary_llm = None
     fallback_llm = None
 
-    # ১. Fallback: Groq
+    # ১. Primary: Groq (সবচেয়ে দ্রুত)
     if groq_key:
         try:
-            fallback_llm = ChatGroq(
-                model="openai/gpt-oss-120b",  # ✅ নতুন সাপোর্টেড মডেল (আপনার স্ক্রিনশট অনুযায়ী)
+            primary_llm = ChatGroq(
+                model="openai/gpt-oss-120b",  # ✅ নতুন সাপোর্টেড মডেল
                 api_key=groq_key,
                 temperature=0.2,
                 max_retries=1,
                 timeout=60.0
             )
-            logger.info("Groq fallback LLM initialized successfully.")
+            logger.info("Groq primary LLM initialized successfully.")
         except Exception as exc:
             logger.warning(f"Failed to initialize Groq: {exc}")
     else:
         logger.warning("GROQ_API_KEY is not configured in environment or settings.")
 
-    # ২. Primary: Gemini Flash
+    # ২. Fallback: Gemini Flash (টাইমআউট ৫ সেকেন্ডে নামানো হলো)
     if gemini_key:
         try:
-            primary_llm = ChatGoogleGenerativeAI(
+            fallback_llm = ChatGoogleGenerativeAI(
                 model="gemini-flash-latest",
                 google_api_key=gemini_key,
                 max_retries=0,          
-                timeout=60.0            
+                timeout=5.0  # ✅ ৬০ সেকেন্ডের বদলে ৫ সেকেন্ড
             )
-            logger.info("Gemini primary LLM initialized successfully.")
+            logger.info("Gemini fallback LLM initialized successfully.")
         except Exception as exc:
             logger.warning(f"Failed to initialize Gemini: {exc}")
 
