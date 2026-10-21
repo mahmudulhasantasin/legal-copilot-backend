@@ -777,13 +777,21 @@ async def list_users(
         )
     stmt = stmt.order_by(desc(User.created_at)).limit(limit).offset(offset)
     users = (await db.execute(stmt)).scalars().all()
+    
+    # ✅ FIX: profile_photo_url এবং phone যোগ করা হলো
     return [
         {
-            "id": u.id, "email": u.email, "full_name": u.full_name,
-            "role": u.role.value, "credit_balance": u.credit_balance,
-            "is_active": u.is_active, "is_verified": u.is_verified,
+            "id": u.id, 
+            "email": u.email, 
+            "full_name": u.full_name,
+            "role": u.role.value, 
+            "credit_balance": u.credit_balance,
+            "is_active": u.is_active, 
+            "is_verified": u.is_verified,
             "enterprise_id": u.enterprise_id,
             "created_at": u.created_at,
+            "profile_photo_url": u.profile_photo_url,
+            "phone": u.phone,
         }
         for u in users
     ]
@@ -810,6 +818,7 @@ async def get_user_detail(
         "is_active": user.is_active,
         "is_verified": user.is_verified,
         "created_at": user.created_at,
+        "profile_photo_url": user.profile_photo_url,
         "lawyer_profile": None,
         "enterprise_id": user.enterprise_id
     }
