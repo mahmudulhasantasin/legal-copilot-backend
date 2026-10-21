@@ -231,6 +231,18 @@ async def send_otp_email(recipient_email: str, otp_code: str) -> bool:
     )
     return await _send_email(recipient_email, subject, body)
 
+# ✅ নতুন: পাসওয়ার্ড রিসেট ইমেইল
+async def send_password_reset_email(recipient_email: str, otp_code: str) -> bool:
+    subject = "Reset Your ContractMind Password"
+    body = (
+        f"Hello,\n\n"
+        f"We received a request to reset your password.\n"
+        f"Your verification code is: {otp_code}\n\n"
+        f"This code expires in 5 minutes. If you did not request this, please ignore this email.\n\n"
+        f"- ContractMind Team"
+    )
+    return await _send_email(recipient_email, subject, body)
+
 async def send_lawyer_offer_email(recipient_email: str, contract_title: str, payout_bdt: float, hours: int = 3) -> bool:
     subject = "New Contract Review Offer"
     body = (

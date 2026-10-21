@@ -1,7 +1,7 @@
 import secrets
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy import select, func
@@ -29,6 +29,16 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 SIGNUP_BONUS_CREDITS = 50
 OTP_EXPIRY_MINUTES = 5
+
+# ✅ BUG B FIX: backend LawyerStatus → frontend verification_status
+# (Matches frontend's LawyerVerificationStatus union in AuthContext.tsx)
+_LAWYER_STATUS_MAP = {
+    "PENDING_VERIFICATION": "pending",
+    "APPROVED": "verified",
+    "REJECTED": "rejected",
+    "SUSPENDED": "suspended",
+    "INACTIVE": "suspended",
+}
 
 # ──────────────────────────────────────────────────────────
 # SCHEMAS
@@ -103,6 +113,13 @@ class Token(BaseModel):
     credit_balance: int
     is_verified: bool
 
+# ✅ BUG B FIX: nested lawyer info (only populated for UserRole.LAWYER)
+class LawyerInfoResponse(BaseModel):
+    bar_council_id: Optional[str] = None
+    experience_years: Optional[int] = None
+    specializations: List[str] = Field(default_factory=list)
+    verification_status: str = "pending"
+
 class UserResponse(BaseModel):
     id: int
     email: str
@@ -115,6 +132,7 @@ class UserResponse(BaseModel):
     is_verified: bool
     enterprise_id: Optional[int] = None
     profile_photo_url: Optional[str] = None
+    lawyer_profile: Optional[LawyerInfoResponse] = None   # ✅ BUG B FIX
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -402,9 +420,39 @@ async def onboard_as_enterprise(payload: OnboardEnterpriseRequest, current_user:
     await db.refresh(enterprise)
     return {"status": "success", "message": "Enterprise registered. Awaiting system admin approval.", "referral_code": enterprise.referral_code, "enterprise_id": enterprise.id}
 
+# ✅ BUG B FIX: /me now includes lawyer_profile for UserRole.LAWYER
 @router.get("/me", response_model=UserResponse)
-async def get_me(current_user: User = Depends(get_current_user)):
-    return current_user
+async def get_me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns the authenticated user with nested lawyer_profile
+    (only for lawyers). Frontend reads `data.lawyer_profile.verification_status`
+    to unlock / lock the lawyer workspace.
+    """
+    response = UserResponse.model_validate(current_user)
+
+    if current_user.role == UserRole.LAWYER:
+        profile = await db.scalar(
+            select(LawyerProfile).where(LawyerProfile.user_id == current_user.id)
+        )
+        if profile:
+            response.lawyer_profile = LawyerInfoResponse(
+                bar_council_id=profile.bar_council_id,
+                experience_years=profile.experience_years,
+                specializations=profile.specializations or [],
+                verification_status=_LAWYER_STATUS_MAP.get(
+                    profile.status.value, "pending"
+                ),
+            )
+        else:
+            # Role=LAWYER but no profile row (shouldn't happen, but defensive)
+            logger.warning(
+                f"[get_me] LAWYER role user {current_user.id} has no LawyerProfile row"
+            )
+
+    return response
 
 # ──────────────────────────────────────────────────────────
 # ACCOUNT DELETION (NEW)
@@ -432,7 +480,7 @@ async def delete_my_account(
     current_user.profile_photo_url = None
     current_user.hashed_password = "DELETED_ACCOUNT" # যাতে কেউ লগইন করতে না পারে
     
-    # ৩. OTP ডাটা ক্লিয়ার করা
+    # ৩. OTP ডাটা ক্লিয়ার করা
     current_user.otp_code = None
     current_user.otp_expires_at = None
 
