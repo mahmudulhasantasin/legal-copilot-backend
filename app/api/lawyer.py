@@ -56,7 +56,7 @@ class SubmitReviewRequest(BaseModel):
     updated_clauses: List[dict] = Field(..., description="Modified clauses from AI audit")
     lawyer_notes: str = Field(min_length=5, max_length=5000)
     signature_url: str = Field(min_length=5, max_length=500, description="Supabase path for signature image")
-    signed_pdf_url: str = Field(min_length=5, max_length=500, description="Supabase path for final signed PDF") # <-- নতুন যুক্ত হলো
+    signed_pdf_url: str = Field(min_length=5, max_length=500, description="Supabase path for final signed PDF")
 
 class WithdrawRequest(BaseModel):
     amount_bdt: Decimal = Field(gt=0, le=100000)
@@ -157,6 +157,7 @@ async def get_my_active_tasks(lawyer: LawyerProfile = Depends(get_current_lawyer
             "memo_id": memo.id, "contract_id": memo.contract_id, "contract_title": contract.title,
             "hitl_status": memo.hitl_status.value, "payout_bdt": float(memo.lawyer_payout_bdt),
             "submit_deadline": memo.submit_deadline, "hours_left": memo.hours_until_submit,
+            "clauses_analysis": memo.clauses_analysis, # ✅ FIX: এআই ক্লজগুলো ফ্রন্টএন্ডে পাঠানোর জন্য
         }
         for memo, contract in rows
     ]
@@ -181,10 +182,10 @@ async def submit_review(
 
     memo.hitl_status = HITLStatus.COMPLETED
     memo.completed_at = now
-    memo.clauses_analysis = payload.updated_clauses
+    memo.clauses_analysis = payload.updated_clauses  # ✅ এডিট করা ক্লজগুলো ডাটাবেসে সেভ হচ্ছে
     memo.lawyer_notes = payload.lawyer_notes
     memo.lawyer_signature = payload.signature_url
-    memo.signed_contract_path = payload.signed_pdf_url # <-- নতুন ফাইনাল পিডিএফ লিংক
+    memo.signed_contract_path = payload.signed_pdf_url
     memo.lawyer_verified_at = now
 
     profile = await db.scalar(select(LawyerProfile).where(LawyerProfile.id == lawyer.id).with_for_update())
@@ -277,11 +278,18 @@ async def request_withdrawal(payload: WithdrawRequest, lawyer: LawyerProfile = D
 async def list_my_withdrawals(lawyer: LawyerProfile = Depends(get_current_lawyer), db: AsyncSession = Depends(get_db)):
     stmt = select(WithdrawalRequest).where(WithdrawalRequest.lawyer_id == lawyer.id).order_by(desc(WithdrawalRequest.requested_at)).limit(20)
     rows = (await db.execute(stmt)).scalars().all()
-    return [
-        {
-            "id": w.id, "amount_bdt": float(w.amount_bdt), "status": w.status.value,
-            "bkash_number": w.bkash_number, "requested_at": w.requested_at,
-            "processed_at": w.processed_at, "admin_note": w.admin_note, "payout_trx_id": w.payout_trx_id,
-        }
-        for w in rows
-    ]
+    
+    # ✅ FIX: লিস্ট কম্প্রিহেনশনের বদলে লুপ ব্যবহার করা হলো যাতে কোনো সিনট্যাক্স এরর না আসে
+    result = []
+    for w in rows:
+        result.append({
+            "id": w.id, 
+            "amount_bdt": float(w.amount_bdt), 
+            "status": w.status.value,
+            "bkash_number": w.bkash_number, 
+            "requested_at": w.requested_at,
+            "processed_at": w.processed_at, 
+            "admin_note": w.admin_note, 
+            "payout_trx_id": w.payout_trx_id,
+        })
+    return result
