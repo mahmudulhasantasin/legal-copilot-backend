@@ -789,6 +789,45 @@ async def list_users(
     ]
 
 
+# ✅ NEW: Get specific user details for Admin Profile Modal
+@router.get("/users/{user_id}")
+async def get_user_detail(
+    user_id: int,
+    admin: User = Depends(check_is_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    user = await db.scalar(select(User).where(User.id == user_id, User.is_deleted == False))
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    response = {
+        "id": user.id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "phone": user.phone,
+        "role": user.role.value,
+        "credit_balance": user.credit_balance,
+        "is_active": user.is_active,
+        "is_verified": user.is_verified,
+        "created_at": user.created_at,
+        "lawyer_profile": None,
+        "enterprise_id": user.enterprise_id
+    }
+
+    if user.role == UserRole.LAWYER:
+        profile = await db.scalar(select(LawyerProfile).where(LawyerProfile.user_id == user.id))
+        if profile:
+            response["lawyer_profile"] = {
+                "bar_council_id": profile.bar_council_id,
+                "experience_years": profile.experience_years,
+                "specializations": profile.specializations,
+                "status": profile.status.value,
+                "wallet_balance": float(profile.wallet_balance)
+            }
+    
+    return response
+
+
 @router.post("/users/{user_id}/suspend")
 async def suspend_user(
     user_id: int,
