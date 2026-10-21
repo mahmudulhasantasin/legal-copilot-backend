@@ -18,13 +18,14 @@ NO_CONTEXT_ANSWER = (
     "অনুগ্রহ করে আপনার পরিস্থিতি বা ঘটনাটি আরও সুনির্দিষ্টভাবে লিখুন।"
 )
 
-# ✅ আপডেটেড রাউটার প্রম্পট: সাধারণ আইনি প্রশ্নে আর ক্লারিফিকেশন চাইবে না
+# ✅ আপডেটেড রাউটার প্রম্পট
 QUERY_ROUTER_PROMPT = """
 You are the intelligent query router for Advotech Copilot, a Bangladesh-law assistant.
 Classify the CURRENT request as exactly one of:
 1. "OUT_OF_SCOPE": Clearly unrelated to law, coding, weather, recipes, etc.
 2. "INSUFFICIENT_EVIDENCE": Explicitly asks for another country's jurisdiction rather than Bangladesh law.
-3. "NEEDS_CLARIFICATION": ONLY use this when the user is describing a personal incident/event but missing crucial facts (e.g., "I got fired", "My landlord evicted me"). DO NOT use this if the user is asking for a general statutory lookup (e.g., "Which article has the right to equality?", "What is Section 138?").
+3. "NEEDS_CLARIFICATION": ONLY use this when the user gives an extremely vague one-liner with ZERO context (e.g., "I got fired"). 
+   - CRITICAL: If the user is answering a previous question, providing specific facts (e.g., "part time", "na", "no notice", "2 years"), you MUST set this to "ANSWERABLE".
 4. "ANSWERABLE": Specific legal question, statutory lookup, or has enough context to provide a detailed answer.
 
 ALSO, determine if this query requires searching for live case law/precedents (e.g., asks for recent verdicts, supreme court rulings, or is a complex real-world dispute).
@@ -73,7 +74,6 @@ def _fallback_route(query, contract_context):
     if any(term in q for term in off_topic):
         return "OUT_OF_SCOPE", False, "আমি বাংলাদেশি আইন, আইনি প্রক্রিয়া ও চুক্তি-সংক্রান্ত প্রশ্নে সহায়তা করি।"
     
-    # ✅ FIX: যদি প্রশ্নে Section বা Article থাকে, তবে সরাসরি Answerable
     if any(k in q for k in ["section", "article", "ধারা", "অনুচ্ছেদ"]):
         return "ANSWERABLE", True, ""
 
@@ -91,7 +91,12 @@ async def classify_query_node(state: QAState) -> dict:
     if not query:
         return {"final_answer": "অনুগ্রহ করে আপনার আইনি প্রশ্নটি লিখুন।", "retrieved_docs": [], "citation_verified": False}
 
-    # ✅ FIX: যদি ইউজার সরাসরি কোনো ধারা/অনুচ্ছেদ জিজ্ঞেস করে, তবে LLM রাউটার বাইপাস করে সরাসরি সার্চে যাবে
+    # ✅ FIX 1: যদি ইউজার আগের পাল্টা প্রশ্নের উত্তর দেয়, তবে LLM রাউটার বাইপাস করে সরাসরি সার্চে যাবে
+    if state.get("force_answerable"):
+        logger.info("[classify_query_node] Bypassing LLM router: User is answering previous clarification.")
+        return {"final_answer": None, "query_type": "ANSWERABLE", "needs_case_law": True, "retrieved_docs": [], "citation_verified": False}
+
+    # ✅ FIX 2: যদি ইউজার সরাসরি কোনো ধারা/অনুচ্ছেদ জিজ্ঞেস করে, তবে রাউটার বাইপাস
     if re.search(r"(section|article|ধারা|অনুচ্ছেদ)\s*\d+", query, re.IGNORECASE):
         logger.info("[classify_query_node] Bypassing LLM router (Explicit Section/Article detected).")
         return {"final_answer": None, "query_type": "ANSWERABLE", "needs_case_law": False, "retrieved_docs": [], "citation_verified": False}
@@ -211,7 +216,6 @@ async def generate_answer_node(state: QAState) -> dict:
         title = d.get("title", "")
 
         if d.get("source_type") == "precedent":
-            # ✅ FIX: কেস ল'র সাথে সোর্স লিংক এবং টাইটেল স্পষ্টভাবে LLM-কে দেখানো হচ্ছে
             ref_url = d.get("reference_url", "") or d.get("metadata", {}).get("url", "")
             precedent_blocks.append(
                 f"• [LIVE WEB RESULT]: {title}\n"
@@ -240,7 +244,6 @@ async def generate_answer_node(state: QAState) -> dict:
     if statutory_blocks:
         context_sections.append("VERIFIED_STATUTORY_CONTEXT:\n" + "\n\n".join(statutory_blocks))
     if precedent_blocks:
-        # ✅ FIX: LLM-কে বলা হচ্ছে এটি লাইভ ওয়েব সার্চের রেজাল্ট
         context_sections.append("VERIFIED_CASE_CONTEXT (Live Web Search Results - MUST BE CITED IN DETAILED ANSWER & JSON):\n" + "\n\n".join(precedent_blocks))
         
     context_text = "\n\n---\n\n".join(context_sections)

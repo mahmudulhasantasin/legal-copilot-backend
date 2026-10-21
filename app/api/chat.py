@@ -111,7 +111,7 @@ def _format_agent_output(structured_response: dict, raw_answer: str, retrieved_d
                 relevance=s.get("relevance", "Primary statutory grounding.")
             ))
     
-    # 3. Filter Cases (UPDATED: Bypass strict verifier for Live Web Results/URLs)
+    # 3. Filter Cases (Bypass strict verifier for Live Web Results/URLs)
     final_cases = []
     verified_case_map = { c.get('case_name','').lower(): c.get('valid') for c in verification.get("verified_cases", []) }
     
@@ -390,11 +390,15 @@ DETAILED CLAUSES ANALYSIS:
     raw_history.reverse()
 
     formatted_chat_history = []
+    is_follow_up_to_clarification = False
+
     for msg in raw_history:
         if msg.role == "user":
             formatted_chat_history.append(HumanMessage(content=msg.content))
         elif msg.role == "assistant":
             formatted_chat_history.append(AIMessage(content=msg.content))
+            # ✅ FIX: যদি শেষ মেসেজটি ক্লারিফিকেশন চাওয়া হয়, তবে ফ্ল্যাগ True করবো
+            is_follow_up_to_clarification = getattr(msg, "needs_clarification", False)
 
     # 6. Invoke LangGraph
     initial_state = {
@@ -410,7 +414,9 @@ DETAILED CLAUSES ANALYSIS:
         "language": lang,
         "query_type": None,
         "needs_case_law": False,
-        "structured_response": None
+        "structured_response": None,
+        # ✅ FIX: নতুন ফ্ল্যাগ পাস করা হলো
+        "force_answerable": is_follow_up_to_clarification 
     }
 
     try:
