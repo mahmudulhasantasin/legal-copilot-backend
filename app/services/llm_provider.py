@@ -71,7 +71,7 @@ def get_llm() -> BaseChatModel:
     if groq_key:
         try:
             primary_llm = ChatGroq(
-                model="openai/gpt-oss-120b",  # ✅ নতুন সাপোর্টেড মডেল
+                model="mixtral-8x7b-32768",  # ✅ নতুন সাপোর্টেড মডেল
                 api_key=groq_key,
                 temperature=0.1,              # ✅ কমিয়ে 0.1 করা হলো (লুপ এড়াতে)
                 max_tokens=2500,               # ✅ সর্বোচ্চ 2500 টোকেন (Infinite Loop বন্ধ)
@@ -93,7 +93,7 @@ def get_llm() -> BaseChatModel:
                 temperature=0.1,              # ✅ কমিয়ে 0.1 করা হলো
                 max_output_tokens=2500,        # ✅ সর্বোচ্চ 2500 টোকেন 
                 max_retries=0,          
-                timeout=5.0                   # ✅ ৬০ সেকেন্ডের বদলে ৫ সেকেন্ড
+                timeout=60.0                 # ✅ ৬০ সেকেন্ডের বদলে ৫ সেকেন্ড
             )
             logger.info("Gemini fallback LLM initialized successfully.")
         except Exception as exc:
