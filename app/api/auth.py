@@ -421,6 +421,8 @@ async def onboard_as_enterprise(payload: OnboardEnterpriseRequest, current_user:
     return {"status": "success", "message": "Enterprise registered. Awaiting system admin approval.", "referral_code": enterprise.referral_code, "enterprise_id": enterprise.id}
 
 # ✅ BUG B FIX: /me now includes lawyer_profile for UserRole.LAWYER
+# Manually construct the response to prevent Pydantic from lazy-loading 
+# the `lawyer_profile` relationship, which causes a MissingGreenlet 500 error.
 @router.get("/me", response_model=UserResponse)
 async def get_me(
     current_user: User = Depends(get_current_user),
@@ -431,7 +433,20 @@ async def get_me(
     (only for lawyers). Frontend reads `data.lawyer_profile.verification_status`
     to unlock / lock the lawyer workspace.
     """
-    response = UserResponse.model_validate(current_user)
+    response = UserResponse(
+        id=current_user.id,
+        email=current_user.email,
+        full_name=current_user.full_name,
+        phone=current_user.phone,
+        role=current_user.role,
+        subscription_tier=current_user.subscription_tier,
+        credit_balance=current_user.credit_balance,
+        is_active=current_user.is_active,
+        is_verified=current_user.is_verified,
+        enterprise_id=current_user.enterprise_id,
+        profile_photo_url=current_user.profile_photo_url,
+        lawyer_profile=None
+    )
 
     if current_user.role == UserRole.LAWYER:
         profile = await db.scalar(
