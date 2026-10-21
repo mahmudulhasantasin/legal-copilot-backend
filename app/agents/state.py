@@ -17,6 +17,12 @@ class QAState(TypedDict):
     contract_id: Optional[int]
     contract_context: Optional[str]
     language: Optional[str]
+    
+    # ✅ নতুন ফিল্ডসমূহ (Smart Router এবং MCP Case Law-এর জন্য)
+    query_type: Optional[str]            # "ANSWERABLE", "NEEDS_CLARIFICATION", "OUT_OF_SCOPE"
+    needs_case_law: Optional[bool]       # মামলার রায় খোঁজার প্রয়োজন আছে কি না
+    cited_cases: Optional[List[Dict[str, Any]]] # LLM যে মামলার রায় উল্লেখ করেছে
+    structured_response: Optional[Dict[str, Any]] # LLM-এর JSON আউটপুট (Parse করার পর)
 
 
 class ClauseRisk(TypedDict):

@@ -1,50 +1,171 @@
 import os
 import re
 import logging
-from typing import List, Dict, Any
+import asyncio
+from typing import List, Dict, Any, Optional
+from urllib.parse import urlparse
+
 from mcp.server.fastmcp import FastMCP
 from duckduckgo_search import DDGS
 from qdrant_client import models
+from tavily import TavilyClient
+
 from app.services.vector_store import vector_manager
 from app.config import settings
-# আগের ধাপে বানানো নরম্যালাইজার ফাংশনটি ইমপোর্ট করছি
-from app.services.legal_normalizer import normalize_section 
+from app.services.legal_normalizer import resolve_act_robust, get_section_variants
 
 logger = logging.getLogger("legal_mcp_server")
 
 # FastMCP Server Instance initialize
 mcp = FastMCP("Bangladesh-Legal-MCP-Server")
 
+# ==========================================
+# TAVILY SETUP & DOMAIN ALLOWLIST
+# ==========================================
+TAVILY_API_KEY = getattr(settings, "TAVILY_API_KEY", os.getenv("TAVILY_API_KEY"))
+_tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
+
+# Tier 1: Government & Official Sources
+TIER1_DOMAINS = [
+    "supremecourt.gov.bd",
+    "bdlaws.minlaw.gov.bd",
+    "minlaw.gov.bd",
+    "lawjustic.gov.bd",
+    "barcouncil.gov.bd",
+    "dpp.gov.bd",
+    "nhrc.org.bd",
+]
+
+# Tier 2: Reputable Legal News (Only used if Tier 1 is empty)
+TIER2_DOMAINS = [
+    "thedailystar.net",
+    "dhakatribune.com",
+    "tbsnews.net",
+    "newagebd.net",
+]
+
+ALLOWED_DOMAINS = set(TIER1_DOMAINS + TIER2_DOMAINS)
+
+# Relevance Check (যাতে খেলাধুলা বা রাজনীতির নিউজ ফিল্টার হয়ে যায়)
+LEGAL_SIGNALS = (
+    "court", "verdict", "judgment", "judgement", "ruling", "appeal",
+    "petition", "writ", "high court", "supreme court", "appellate",
+    "section", "act", "statute", "precedent", "plaintiff", "defendant",
+    "criminal", "civil", "tribunal", "decree", "ordinance", "law",
+    "আদালত", "রায়", "মামলা", "আপিল", "ধারা", "আইন", "বিচার", "আদেশ", "আইনি"
+)
+
+def _is_allowed(href: str) -> bool:
+    """Checks if the URL belongs to our allowed domain list."""
+    try:
+        host = (urlparse(href).hostname or "").lower()
+        return any(host == d or host.endswith("." + d) for d in ALLOWED_DOMAINS)
+    except Exception:
+        return False
+
+def _looks_legal(*parts: str) -> bool:
+    """Checks if the title/snippet contains legal keywords."""
+    text = " ".join(p for p in parts if p).lower()
+    return any(k in text for k in LEGAL_SIGNALS)
+
+
+# ==========================================
+# SEARCH HELPERS (TAVILY & DDGS)
+# ==========================================
+def _tavily_search_sync(query: str, domains: List[str], n: int) -> List[Dict[str, Any]]:
+    if not _tavily_client:
+        return []
+    try:
+        # Tavily Search API call
+        resp = _tavily_client.search(
+            query=query,
+            include_domains=domains,
+            search_depth="basic",  # 1 credit per search
+            max_results=n,
+        )
+        return resp.get("results", [])
+    except Exception as exc:
+        logger.warning(f"[Tavily] Search failed: {exc}")
+        return []
+
+def _ddg_one_site_sync(query: str, site: str, n: int) -> List[Dict[str, Any]]:
+    """Fallback: DuckDuckGo search for a single site."""
+    try:
+        with DDGS() as ddgs:
+            return list(ddgs.text(f"{query} site:{site}", max_results=n, region="bd-en"))
+    except Exception as exc:
+        logger.warning(f"[DDGS] Failed for {site}: {exc}")
+        return []
+
 
 # ==========================================
 # TOOL 1: Live Precedent & Legal News Search
 # ==========================================
 @mcp.tool()
-def search_live_bd_judgements(query: str, max_results: int = 4) -> List[Dict[str, Any]]:
+async def search_live_bd_judgements(query: str, max_results: int = 4) -> List[Dict[str, Any]]:
     """
-    Searches the web for recent Bangladesh High Court / Supreme Court verdicts, 
-    legal news, and precedents from authoritative legal sources and mainstream news portals.
+    Searches for recent Bangladesh High Court / Supreme Court verdicts.
+    Uses Tavily API primarily (Tier 1 Gov -> Tier 2 News).
+    Falls back to DuckDuckGo only if Tavily fails or returns empty.
     """
-    search_prompt = f"Bangladesh Supreme Court verdict {query} site:supremecourt.gov.bd OR site:thedailystar.net OR site:dhakatribune.com OR site:tbsnews.net"
-    
-    results = []
-    try:
-        with DDGS() as ddgs:
-            raw_hits = ddgs.text(search_prompt, max_results=max_results)
-            for hit in raw_hits:
-                results.append({
-                    "title": hit.get("title", "Legal Update"),
-                    "snippet": hit.get("body", ""),
-                    "reference_url": hit.get("href", ""),
-                    "source": "Supreme Court / Verified Legal News"
-                })
-    except Exception as exc:
-        logger.error(f"[MCP] Web search error: {exc}")
-        # FIX (MCP-02): ডামি ডেটা না পাঠিয়ে সরাসরি ফাঁকা লিস্ট রিটার্ন করা হলো
-        # যাতে এলএলএম এরর মেসেজকে আইনি রায় হিসেবে হ্যালুসিনেট না করে।
+    if not query or not query.strip():
         return []
-        
-    return results
+
+    clean_query = f"Bangladesh Supreme Court verdict {query}".strip()
+    seen = set()
+    merged = []
+
+    def _add_results(results, tier, source_name):
+        for r in results:
+            if len(merged) >= max_results:
+                return
+            
+            # Tavily returns 'url', DDGS returns 'href'
+            url = r.get("url") or r.get("href") or ""
+            title = r.get("title") or "Legal Update"
+            snippet = r.get("content") or r.get("body") or ""
+
+            if not url or url in seen or not _is_allowed(url):
+                continue
+            if not _looks_legal(title, snippet):
+                continue
+
+            seen.add(url)
+            merged.append({
+                "title": title,
+                "snippet": snippet,
+                "reference_url": url,
+                "source": f"{source_name} (Tier {tier})",
+                "tier": tier
+            })
+
+    # --- Strategy 1: Tavily (Tier 1 Gov) ---
+    if _tavily_client:
+        t1_res = await asyncio.to_thread(_tavily_search_sync, clean_query, TIER1_DOMAINS, max_results)
+        _add_results(t1_res, tier=1, source_name="Tavily/Gov")
+
+    # --- Strategy 2: Tavily (Tier 2 News) ---
+    if _tavily_client and len(merged) < max_results:
+        t2_res = await asyncio.to_thread(_tavily_search_sync, clean_query, TIER2_DOMAINS, max_results)
+        _add_results(t2_res, tier=2, source_name="Tavily/News")
+
+    # --- Strategy 3: DDGS Fallback (If Tavily fails or key missing) ---
+    if not merged:
+        logger.info("[MCP] Tavily returned 0 results. Falling back to DDGS...")
+        for site in TIER1_DOMAINS[:4]:  # Limit to top 4 gov sites to avoid timeout
+            if len(merged) >= max_results:
+                break
+            d_res = await asyncio.to_thread(_ddg_one_site_sync, clean_query, site, 2)
+            _add_results(d_res, tier=1, source_name="DDGS/Gov")
+            
+        for site in TIER2_DOMAINS[:2]:  # Limit to top 2 news sites
+            if len(merged) >= max_results:
+                break
+            d_res = await asyncio.to_thread(_ddg_one_site_sync, clean_query, site, 2)
+            _add_results(d_res, tier=2, source_name="DDGS/News")
+
+    logger.info(f"[MCP] search_live_bd_judgements: {len(merged)} clean results for '{query[:40]}'")
+    return merged[:max_results]
 
 
 # ==========================================
@@ -54,29 +175,37 @@ def search_live_bd_judgements(query: str, max_results: int = 4) -> List[Dict[str
 def get_statute_by_section(act_name: str, section_number: str) -> Dict[str, Any]:
     """
     Directly retrieves the verbatim text of an exact statutory section from Qdrant Cloud.
-    Prevents LLM hallucinations on statutory wording.
+    Uses robust act resolution and section variants to prevent cross-act collisions.
     """
-    # FIX: আমাদের নতুন রেজেক্স ফাংশন দিয়ে সেকশন নম্বর নরম্যালাইজ করা হলো
-    clean_sec = normalize_section(section_number)
+    # ১. Act Name Resolution (Bengali বা English, যেকোনো ফরম্যাটে)
+    act_stored = resolve_act_robust(act_name) 
     
-    if not clean_sec:
-        clean_sec = section_number.strip()
+    # ২. Section Variants বের করা (e.g., "ধারা ২৬ক" -> ["26A", "26a"])
+    sec_variants = get_section_variants(section_number)
+    if not sec_variants:
+        sec_variants = [section_number.strip()]
+
+    must_conditions = [
+        models.FieldCondition(
+            key="metadata.section_norm",
+            match=models.MatchAny(any=sec_variants),
+        )
+    ]
+    
+    if act_stored:
+        must_conditions.insert(0, models.FieldCondition(
+            key="metadata.act_norm",
+            match=models.MatchValue(value=act_stored),
+        ))
+    else:
+        logger.warning(f"[MCP] Act '{act_name}' not resolved — section-only lookup (risk of collision).")
 
     try:
         client = vector_manager.client
         scroll_result, _ = client.scroll(
             collection_name=settings.QDRANT_COLLECTION_NAME,
-            scroll_filter=models.Filter(
-                must=[
-                    models.FieldCondition(
-                        # FIX (MCP-01): Strict Mode-এর জন্য ইনডেক্সকৃত ফিল্ড ব্যবহার করা হলো
-                        key="metadata.section_norm",
-                        # MatchText এর বদলে MatchValue ব্যবহার করা বেশি নিরাপদ
-                        match=models.MatchValue(value=clean_sec)
-                    )
-                ]
-            ),
-            limit=3,
+            scroll_filter=models.Filter(must=must_conditions),
+            limit=5,
             with_payload=True,
             with_vectors=False
         )
@@ -86,15 +215,22 @@ def get_statute_by_section(act_name: str, section_number: str) -> Dict[str, Any]
             metadata = payload.get("metadata", {})
             
             point_act = metadata.get("act", "")
-            if act_name.lower() in point_act.lower() or not act_name:
-                return {
-                    "found": True,
-                    "act": point_act,
-                    "section": metadata.get("section", f"Section {clean_sec}"),
-                    "title": metadata.get("title", ""),
-                    "verbatim_text": payload.get("text", "") or payload.get("content", ""),
-                    "status": "Verified against Bangladesh Statutory Gazette"
-                }
+            
+            # Safety Check: যদি alias ফাইলে অ্যাক্ট রিজলভ না হয়, তবে সাবস্ট্রিং ম্যাচ করে দেখো
+            if not act_stored and act_name:
+                if act_name.lower() not in point_act.lower():
+                    continue
+
+            return {
+                "found": True,
+                "act": point_act,
+                "act_norm": metadata.get("act_norm", ""),
+                "section": metadata.get("section", f"Section {section_number}"),
+                "section_norm": metadata.get("section_norm", ""),
+                "title": metadata.get("title", ""),
+                "verbatim_text": payload.get("text", "") or payload.get("content", ""),
+                "status": "Verified against Bangladesh Statutory Gazette"
+            }
 
     except Exception as exc:
         logger.error(f"[MCP] Statute lookup failed: {exc}")

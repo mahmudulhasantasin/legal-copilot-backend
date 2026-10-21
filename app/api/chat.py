@@ -24,7 +24,7 @@ from app.models.lawyer import LawyerProfile
 from app.models.memo import ContractMemo, Contract, HITLStatus
 from app.agents.qa_graph import qa_graph
 from app.services.llm_provider import get_llm
-from app.services.legal_normalizer import normalize_act, normalize_section, resolve_act
+from app.services.verifier import verifier # ✅ নতুন ভেরিফায়ার ইমপোর্ট
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["Legal Chat"])
@@ -36,14 +36,22 @@ router = APIRouter(prefix="/api/chat", tags=["Legal Chat"])
 class CitedSectionDetail(BaseModel):
     act: str
     section_number: str
-    title: str
-    provision_summary: str
-    relevance: str
+    title: Optional[str] = "Statutory Provision"
+    provision_summary: Optional[str] = ""
+    relevance: Optional[str] = ""
+
+# ✅ নতুন স্কিমা: কেস ল' (Case Law) এর জন্য
+class CitedCaseDetail(BaseModel):
+    case_name: str
+    ruling: Optional[str] = ""
+    relevance: Optional[str] = ""
 
 class StructuredLegalResponse(BaseModel):
     detailed_answer: str
     cited_sections: List[CitedSectionDetail] = Field(default_factory=list)
+    cited_cases: List[CitedCaseDetail] = Field(default_factory=list) # ✅ নতুন যুক্ত হলো
     suggested_next_steps: List[str] = Field(default_factory=list)
+    needs_clarification: bool = False # ✅ নতুন যুক্ত হলো
 
 class CreateSessionRequest(BaseModel):
     mode: str = Field(default="GENERAL", description="GENERAL, LAWYER_RESEARCH, or USER_CONTRACT")
@@ -59,86 +67,70 @@ class ChatResponse(BaseModel):
     user_query: str
     response: StructuredLegalResponse
     credits_remaining: int
-    credits_source: str  # e.g., "wallet", "monthly_pool", "free"
+    credits_source: str
     language_detected: str
 
 # ──────────────────────────────────────────────────────────
 # HELPERS
 # ──────────────────────────────────────────────────────────
 
-def _format_agent_output(raw_text: str, retrieved_docs: list, citation_verified: bool = True) -> StructuredLegalResponse:
-    """Formats LLM output and validates citations against retrieved docs."""
-    valid_docs_map = {}
-    by_section = {}
-    for doc in retrieved_docs:
-        if doc.get("source_type") == "precedent":
-            continue
-        d_act = doc.get("act", "")
-        s_n = normalize_section(str(doc.get("section", "")))
-        a_n = resolve_act(d_act) or normalize_act(d_act)
-        if not s_n:
-            continue
-        valid_docs_map[f"{a_n}_{s_n}"] = doc
-        by_section.setdefault(s_n, []).append(doc)
-
-    cited_items = []
-    seen = set()
-
-    def _doc_citation(doc, relevance):
-        content = doc.get("content") or doc.get("text") or ""
-        return CitedSectionDetail(
-            act=doc.get("act", ""),
-            section_number=doc.get("section", ""),
-            title=doc.get("title") or "Statutory Provision",
-            provision_summary=(content[:200] + "...") if len(content) > 200 else content,
-            relevance=relevance or "Primary statutory grounding.",
+def _format_agent_output(structured_response: dict, raw_answer: str, retrieved_docs: list) -> StructuredLegalResponse:
+    """
+    Takes the LLM's JSON output, strictly verifies citations against retrieved docs,
+    and returns a safe StructuredLegalResponse.
+    """
+    if not structured_response:
+        # Fallback if LLM failed to output JSON
+        return StructuredLegalResponse(
+            detailed_answer=raw_answer,
+            cited_sections=[],
+            cited_cases=[],
+            suggested_next_steps=[],
+            needs_clarification=False
         )
 
-    def add_citation(act, sec, relevance=""):
-        s_n = normalize_section(sec)
-        if not s_n: return
-        doc = None
-        if act:
-            a_n = resolve_act(act) or normalize_act(act)
-            doc = valid_docs_map.get(f"{a_n}_{s_n}")
-        # Do not silently attach a section from another Act if the model named an Act.
-        if doc is None and not act:
-            candidates = by_section.get(s_n, [])
-            if len(candidates) == 1:
-                doc = candidates[0]
-        if doc is None: return
-        
-        key = f"{resolve_act(doc.get('act','')) or normalize_act(doc.get('act',''))}_{normalize_section(doc.get('section',''))}"
-        if key in seen: return
-        seen.add(key)
-        cited_items.append(_doc_citation(doc, relevance))
+    answer_text = structured_response.get("detailed_answer") or raw_answer
+    needs_clarification = structured_response.get("needs_clarification", False)
+    next_steps = structured_response.get("suggested_next_steps", [])
+    raw_sections = structured_response.get("cited_sections", [])
+    raw_cases = structured_response.get("cited_cases", [])
 
-    answer_text = raw_text
-    next_steps = None
+    # 1. ✅ STRICT VERIFICATION: Cross-check with retrieved context
+    verification = verifier.verify_structured_response(structured_response, retrieved_docs)
+    
+    # 2. Filter Sections (Only keep valid/hallucination-free sections)
+    final_sections = []
+    verified_sec_map = { f"{v.get('act','')}_{v.get('section','')}".lower(): v.get('valid') for v in verification.get("verified_sections", []) }
+    
+    for s in raw_sections:
+        key = f"{s.get('act','')}_{s.get('section','')}".lower()
+        if verified_sec_map.get(key, False):
+            final_sections.append(CitedSectionDetail(
+                act=s.get("act", ""),
+                section_number=s.get("section", ""),
+                title=s.get("title", "Statutory Provision"),
+                provision_summary=s.get("provision_summary", ""),
+                relevance=s.get("relevance", "Primary statutory grounding.")
+            ))
+    
+    # 3. Filter Cases (Only keep valid cases)
+    final_cases = []
+    verified_case_map = { c.get('case_name','').lower(): c.get('valid') for c in verification.get("verified_cases", []) }
+    
+    for c in raw_cases:
+        if verified_case_map.get(c.get("case_name","").lower(), False):
+            final_cases.append(CitedCaseDetail(
+                case_name=c.get("case_name", ""),
+                ruling=c.get("ruling", ""),
+                relevance=c.get("relevance", "Relevant judicial precedent.")
+            ))
 
-    cleaned = raw_text.strip()
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```(?:json)?\n?", "", cleaned, flags=re.IGNORECASE)
-        cleaned = re.sub(r"\n?```$", "", cleaned).strip()
-
-    try:
-        parsed = json.loads(cleaned)
-        if isinstance(parsed, dict) and "detailed_answer" in parsed:
-            answer_text = parsed.get("detailed_answer") or raw_text
-            next_steps = parsed.get("suggested_next_steps") or None
-            if citation_verified:
-                for c in parsed.get("cited_sections", []) or []:
-                    if isinstance(c, dict):
-                        add_citation(c.get("act"), c.get("section_number"), c.get("relevance"))
-    except Exception:
-        pass
-
-    if next_steps is None:
-        next_steps = ["Review the cited provisions with a qualified Bangladesh advocate."] if cited_items else []
     return StructuredLegalResponse(
         detailed_answer=answer_text,
-        cited_sections=cited_items,
+        cited_sections=final_sections,
+        cited_cases=final_cases,
         suggested_next_steps=next_steps,
+        needs_clarification=needs_clarification
     )
 
 
@@ -150,7 +142,6 @@ async def _generate_rolling_summary(db: AsyncSession, session: ChatSession):
     stmt = select(ChatMessage).where(ChatMessage.session_id == session.id).order_by(ChatMessage.created_at.asc())
     messages = (await db.execute(stmt)).scalars().all()
     
-    # Format history for LLM
     history_text = "\n".join([f"{m.role.capitalize()}: {m.content}" for m in messages])
     
     prompt = f"""Summarize the following legal consultation in 3-4 concise sentences. 
@@ -182,9 +173,6 @@ async def create_session(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Creates a new chat session. Snapshots tier limits at creation."""
-    
-    # 1. Validate mode
     valid_modes = [ChatMode.GENERAL.value, ChatMode.LAWYER_RESEARCH.value, ChatMode.USER_CONTRACT.value]
     if payload.mode not in valid_modes:
         raise HTTPException(400, f"Invalid mode. Use {', '.join(valid_modes)}.")
@@ -195,21 +183,19 @@ async def create_session(
     if payload.mode == ChatMode.USER_CONTRACT.value and not payload.contract_id:
         raise HTTPException(400, "contract_id is required for USER_CONTRACT mode.")
 
-    # 2. Check active session limits
     max_sessions = get_max_active_sessions(current_user)
     if max_sessions != -1:
         active_count = (await db.execute(
             select(func.count(ChatSession.id)).where(
                 ChatSession.user_id == current_user.id,
                 ChatSession.is_closed == False,
-                ChatSession.session_mode != ChatMode.CONTRACT_REVIEW.value # Contract reviews have their own limits
+                ChatSession.session_mode != ChatMode.CONTRACT_REVIEW.value
             )
         )).scalar_one()
         
         if active_count >= max_sessions:
             raise HTTPException(403, f"You have reached the maximum of {max_sessions} active sessions.")
 
-    # 3. Verify ownership if USER_CONTRACT
     scoped_contract_id = None
     if payload.mode == ChatMode.USER_CONTRACT.value:
         contract = await db.scalar(select(Contract).where(Contract.id == payload.contract_id, Contract.user_id == current_user.id))
@@ -217,7 +203,6 @@ async def create_session(
             raise HTTPException(404, "Contract not found or you don't have access.")
         scoped_contract_id = contract.id
 
-    # 4. Create session with snapshotted limits
     session = ChatSession(
         user_id=current_user.id,
         title=payload.title or "Contract Chat",
@@ -244,7 +229,6 @@ async def list_sessions(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Lists user's chat sessions (excluding contract reviews, which show in lawyer panel)."""
     stmt = (
         select(ChatSession)
         .where(
@@ -296,6 +280,9 @@ async def get_session_history(
                 "role": m.role,
                 "content": m.content,
                 "citations": m.citations,
+                "cited_cases": m.cited_cases,                   # ✅ নতুন যুক্ত হলো
+                "suggested_next_steps": m.suggested_next_steps, # ✅ নতুন যুক্ত হলো
+                "needs_clarification": m.needs_clarification,   # ✅ নতুন যুক্ত হলো
                 "created_at": m.created_at
             }
             for m in messages
@@ -349,10 +336,9 @@ async def process_chat_query(
             detail=f"Session limit reached ({session.session_limit} messages). Please start a new session."
         )
 
-    # 2. Context-specific validation (Contract Review)
+    # 2. Context-specific validation
     contract_context = ""
     if session.session_mode == ChatMode.CONTRACT_REVIEW.value:
-        # Verify lawyer is assigned to this contract
         memo = await db.scalar(
             select(ContractMemo).where(
                 ContractMemo.contract_id == session.scoped_contract_id,
@@ -364,7 +350,6 @@ async def process_chat_query(
             raise HTTPException(403, "You are not assigned to review this contract.")
     
     elif session.session_mode == ChatMode.USER_CONTRACT.value:
-        # Fetch the AI Memo for this user's contract
         memo = await db.scalar(select(ContractMemo).where(ContractMemo.contract_id == session.scoped_contract_id))
         if memo:
             contract_context = f"""
@@ -378,18 +363,18 @@ DETAILED CLAUSES ANALYSIS:
     # 3. Language Detection
     lang = detect_language(payload.query)
 
-    # 4. Credit Deduction (Security service handles free modes & monthly pools)
+    # 4. Credit Deduction
     deduction = await check_and_deduct_credits(
         user=current_user,
         db=db,
-        cost=1, # Actual cost logic is handled inside based on role and chat_mode
+        cost=1,
         tx_type=CreditTxType.CHAT_QUERY,
         description=f"Chat query: {payload.query[:30]}...",
         chat_mode=session.session_mode,
-        commit=False # We commit at the end with the messages
+        commit=False
     )
 
-    # 5. Fetch History (Limit to last 6 messages for context)
+    # 5. Fetch History
     history_stmt = (
         select(ChatMessage)
         .where(ChatMessage.session_id == session.id)
@@ -397,7 +382,7 @@ DETAILED CLAUSES ANALYSIS:
         .limit(6)
     )
     raw_history = (await db.execute(history_stmt)).scalars().all()
-    raw_history.reverse() # Put back in chronological order
+    raw_history.reverse()
 
     formatted_chat_history = []
     for msg in raw_history:
@@ -417,7 +402,11 @@ DETAILED CLAUSES ANALYSIS:
         "citation_verified": False,
         "contract_id": session.scoped_contract_id,
         "contract_context": contract_context,
-        "language": lang
+        "language": lang,
+        # নতুন ফিল্ডগুলো রিসেট করা হলো
+        "query_type": None,
+        "needs_case_law": False,
+        "structured_response": None
     }
 
     try:
@@ -426,13 +415,15 @@ DETAILED CLAUSES ANALYSIS:
         logger.exception(f"Error processing query: {exc}")
         raise HTTPException(500, "An error occurred while generating the response.")
 
-    # 7. Format Output
+    # 7. Format Output (Strict Verification happens here)
     raw_answer = graph_output.get("final_answer") or "No legal answer generated."
     retrieved_docs = graph_output.get("retrieved_docs") or []
+    structured_response_json = graph_output.get("structured_response")
+    
     structured_res = _format_agent_output(
-        raw_answer,
-        retrieved_docs,
-        citation_verified=bool(graph_output.get("citation_verified", False)),
+        structured_response_json, 
+        raw_answer, 
+        retrieved_docs
     )
 
     # 8. Save Messages & Update Session
@@ -440,9 +431,15 @@ DETAILED CLAUSES ANALYSIS:
         session_id=session.id, role="user", content=payload.query,
         credit_deducted=deduction["deducted"], language_detected=lang
     )
+    
     assistant_msg = ChatMessage(
-        session_id=session.id, role="assistant", content=structured_res.detailed_answer,
+        session_id=session.id, 
+        role="assistant", 
+        content=structured_res.detailed_answer,
         citations=[c.model_dump() for c in structured_res.cited_sections],
+        cited_cases=[c.model_dump() for c in structured_res.cited_cases],             # ✅ নতুন
+        suggested_next_steps=structured_res.suggested_next_steps,                   # ✅ নতুন
+        needs_clarification=structured_res.needs_clarification,                     # ✅ নতুন
         language_detected=lang
     )
     
@@ -455,9 +452,8 @@ DETAILED CLAUSES ANALYSIS:
     
     await db.commit()
 
-    # 9. Generate Rolling Summary (if applicable)
+    # 9. Generate Rolling Summary
     if should_generate_summary(current_user) and session.message_count >= 10:
-        # We do this asynchronously or inline (inline for simplicity here)
         await _generate_rolling_summary(db, session)
 
     return ChatResponse(

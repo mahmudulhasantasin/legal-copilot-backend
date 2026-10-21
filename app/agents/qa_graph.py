@@ -1,6 +1,7 @@
 import logging
 import json
 import re
+from typing import Dict, Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 
@@ -9,32 +10,29 @@ from app.agents.state import QAState
 from app.services.llm_provider import get_llm
 from app.services.mcp_server import search_live_bd_judgements
 from app.services.retriever import hybrid_retriever
-from app.services.verifier import verifier
 
 logger = logging.getLogger(__name__)
 
-# Specific precedent triggers only
-PRECEDENT_TRIGGERS = [
-    "verdict", "judgment", "judgement", "precedent", "ruling", "case law",
-    "supreme court verdict", "high court verdict",
-    "রায়", "মামলার রায়", "নজির", "সুপ্রিম কোর্টের রায়", "হাইকোর্টের রায়",
-]
-
 NO_CONTEXT_ANSWER = (
     "দুঃখিত, আপনার প্রশ্নের সাথে সরাসরি সম্পর্কিত কোনো আইনের ধারা এই মুহূর্তে আমাদের ডাটাবেসে খুঁজে পাওয়া যায়নি। "
-    "অনুগ্রহ করে আপনার পরিস্থিতি বা ঘটনাটি আরও সুনির্দিষ্টভাবে লিখুন (যেমন: কী ধরনের বিরোধ, কোন চুক্তি বা কোন আইন সম্পর্কিত)।"
+    "অনুগ্রহ করে আপনার পরিস্থিতি বা ঘটনাটি আরও সুনির্দিষ্টভাবে লিখুন।"
 )
 
-# Query routing prevents unrelated prompts from being answered as legal questions.
+# ✅ আপডেটেড রাউটার প্রম্পট: ক্লারিফিকেশন এবং কেস ল' ডিটেকশন যুক্ত করা হলো
 QUERY_ROUTER_PROMPT = """
-You are the query router for Advotech Copilot, a Bangladesh-law assistant.
+You are the intelligent query router for Advotech Copilot, a Bangladesh-law assistant.
 Classify the CURRENT request as exactly one of:
-ANSWERABLE: Bangladesh law, legal rights/procedure, statutes, judgments, legal situations, or contract documents.
-NEEDS_CLARIFICATION: potentially legal, even if brief or missing some facts (we will still search the database to provide a baseline).
-OUT_OF_SCOPE: clearly unrelated to law or the current contract context (e.g. coding, weather, recipes, sports, general trivia).
-INSUFFICIENT_EVIDENCE: explicitly asks for another country's jurisdiction rather than Bangladesh law.
-Use history only to resolve follow-up references. If contract context exists, questions about it are in scope.
-Return ONLY JSON: {"status":"ANSWERABLE|NEEDS_CLARIFICATION|OUT_OF_SCOPE|INSUFFICIENT_EVIDENCE","response":"short polite response if OUT_OF_SCOPE or INSUFFICIENT_EVIDENCE; otherwise empty"}.
+1. "OUT_OF_SCOPE": Clearly unrelated to law, coding, weather, recipes, etc.
+2. "INSUFFICIENT_EVIDENCE": Explicitly asks for another country's jurisdiction rather than Bangladesh law.
+3. "NEEDS_CLARIFICATION": Potentially legal, but vague or missing crucial facts (e.g., "I got fired", "My landlord evicted me"). 
+4. "ANSWERABLE": Specific legal question or has enough context to provide a detailed answer.
+
+ALSO, determine if this query requires searching for live case law/precedents (e.g., asks for verdicts, recent rulings, or is a complex real-world dispute).
+Return ONLY JSON: {
+  "status":"ANSWERABLE|NEEDS_CLARIFICATION|OUT_OF_SCOPE|INSUFFICIENT_EVIDENCE",
+  "needs_case_law": true|false,
+  "response":"short polite response if OUT_OF_SCOPE/INSUFFICIENT_EVIDENCE; OR 2-3 clarifying questions if NEEDS_CLARIFICATION; otherwise empty"
+}
 Match language: Bengali/Banglish -> formal Bengali script; English -> English.
 """
 
@@ -66,32 +64,29 @@ def _json_object(value):
 def _fallback_route(query, contract_context):
     q = (query or "").strip().lower()
     if contract_context:
-        return "ANSWERABLE", ""
+        return "ANSWERABLE", False, ""
     off_topic = (
         "weather", "recipe", "football score", "cricket score", "debug my code",
         "python", "javascript", "react", "fastapi", "machine learning", "kaggle", "datathon",
         "আবহাওয়া", "রেসিপি", "ক্রিকেটের স্কোর", "পাইথন কোড", "জাভাস্ক্রিপ্ট"
     )
     if any(term in q for term in off_topic):
-        return (
-            "OUT_OF_SCOPE",
-            "আমি বাংলাদেশি আইন, আইনি প্রক্রিয়া ও চুক্তি-সংক্রান্ত প্রশ্নে সহায়তা করি। আপনার প্রশ্নটি আইনের সঙ্গে কীভাবে সম্পর্কিত, তা জানালে সাহায্য করতে পারব।"
-        )
-    if len(q.split()) <= 1 and q in {"hi", "hello", "হ্যালো", "হাই", "সালাম", "assalamu alaikum"}:
-        return (
-            "OUT_OF_SCOPE",
-            "স্বাগতম! আমি আপনার বাংলাদেশি আইন ও চুক্তি-বিষয়ক সহকারী। আপনার আইনি প্রশ্ন বা সমস্যার কথা বিস্তারিত লিখুন, আমি প্রাসঙ্গিক আইন ও ধারা অনুযায়ী সাহায্য করার চেষ্টা করব।"
-        )
-    return "ANSWERABLE", ""
+        return "OUT_OF_SCOPE", False, "আমি বাংলাদেশি আইন, আইনি প্রক্রিয়া ও চুক্তি-সংক্রান্ত প্রশ্নে সহায়তা করি।"
+    
+    if len(q.split()) <= 2:
+        return "NEEDS_CLARIFICATION", False, "অনুগ্রহ করে আপনার পরিস্থিতি বা আইনি সমস্যাটি আরও বিস্তারিতভাবে লিখুন, যাতে আমি সঠিক আইন ও ধারা বলতে পারি।"
+        
+    return "ANSWERABLE", True, ""
 
 
 async def classify_query_node(state: QAState) -> dict:
-    """Uses existing final_answer state as the route signal; no QAState change required."""
     query = (state.get("query") or "").strip()
     contract_context = state.get("contract_context", "") or ""
     history = state.get("messages", []) or []
+    
     if not query:
         return {"final_answer": "অনুগ্রহ করে আপনার আইনি প্রশ্নটি লিখুন।", "retrieved_docs": [], "citation_verified": False}
+        
     try:
         llm = get_llm()
         history_text = "\n".join(
@@ -104,31 +99,31 @@ async def classify_query_node(state: QAState) -> dict:
         )
         result = await llm.ainvoke([SystemMessage(content=QUERY_ROUTER_PROMPT), HumanMessage(content=prompt)])
         parsed = _json_object(_content_text(getattr(result, 'content', result))) or {}
+        
         status = str(parsed.get("status", "")).strip().upper()
         response = str(parsed.get("response", "")).strip()
+        needs_case_law = bool(parsed.get("needs_case_law", False))
 
         if status not in {"ANSWERABLE", "NEEDS_CLARIFICATION", "OUT_OF_SCOPE", "INSUFFICIENT_EVIDENCE"}:
-            status, response = _fallback_route(query, contract_context)
+            status, needs_case_law, response = _fallback_route(query, contract_context)
 
-        # Proceed to retrieval for both ANSWERABLE and NEEDS_CLARIFICATION so LLM can give a legal baseline first
-        if status in {"ANSWERABLE", "NEEDS_CLARIFICATION"}:
-            return {"final_answer": None, "retrieved_docs": [], "citation_verified": False}
+        # ✅ FIX: If clarification is needed, stop here and ask the user
+        if status == "NEEDS_CLARIFICATION" and not contract_context:
+            return {"final_answer": response, "query_type": status, "retrieved_docs": [], "citation_verified": False}
 
-        if not response:
-            status, response = _fallback_route(query, contract_context)
-            if status in {"ANSWERABLE", "NEEDS_CLARIFICATION"}:
-                return {"final_answer": None, "retrieved_docs": [], "citation_verified": False}
+        # ✅ FIX: If out of scope, stop here
+        if status in {"OUT_OF_SCOPE", "INSUFFICIENT_EVIDENCE"}:
+            return {"final_answer": response, "query_type": status, "retrieved_docs": [], "citation_verified": False}
 
-        logger.info("[classify_query_node] status=%s query=%r", status, query[:100])
-        return {"final_answer": response, "retrieved_docs": [], "citation_verified": False}
+        # Proceed to retrieval
+        return {"final_answer": None, "query_type": "ANSWERABLE", "needs_case_law": needs_case_law, "retrieved_docs": [], "citation_verified": False}
+
     except Exception:
         logger.exception("[classify_query_node] failed; using fallback router")
-        status, response = _fallback_route(query, contract_context)
-        return {
-            "final_answer": response if status not in {"ANSWERABLE", "NEEDS_CLARIFICATION"} else None,
-            "retrieved_docs": [],
-            "citation_verified": False
-        }
+        status, needs_case_law, response = _fallback_route(query, contract_context)
+        if status in {"NEEDS_CLARIFICATION", "OUT_OF_SCOPE", "INSUFFICIENT_EVIDENCE"}:
+            return {"final_answer": response, "query_type": status, "retrieved_docs": [], "citation_verified": False}
+        return {"final_answer": None, "query_type": "ANSWERABLE", "needs_case_law": needs_case_law, "retrieved_docs": [], "citation_verified": False}
 
 
 def route_after_classification(state: QAState) -> str:
@@ -136,12 +131,13 @@ def route_after_classification(state: QAState) -> str:
 
 
 async def retrieve_node(state: QAState) -> dict:
-    """Qdrant থেকে আইনের ধারা আনে। লাইভ ওয়েব সার্চ শুধু স্পষ্টভাবে রায়/নজির চাইলে।"""
+    """Qdrant থেকে আইনের ধারা আনে। MCP দিয়ে লাইভ ওয়েব সার্চ হয় যদি needs_case_law True হয়।"""
     query = state.get("query", "")
     history_messages = state.get("messages", [])
+    needs_case_law = state.get("needs_case_law", False)
     context_docs = []
 
-    # 1. Primary Statutory Retrieval (top_k=8 for richer statutory context)
+    # 1. Primary Statutory Retrieval (Qdrant)
     try:
         llm = get_llm()
         results = await hybrid_retriever.aretrieve(query, history=history_messages, llm_instance=llm, top_k=8)
@@ -158,19 +154,18 @@ async def retrieve_node(state: QAState) -> dict:
                     "paths": r.get("paths", []),
                     "metadata": r.get("metadata", {}),
                 })
-        logger.info(
-            f"[retrieve_node] {len(context_docs)} statute docs: "
-            f"{[(d.get('act'), d.get('section'), d.get('paths')) for d in context_docs]}"
-        )
+        logger.info(f"[retrieve_node] {len(context_docs)} statute docs found.")
     except Exception as e:
         logger.exception(f"[retrieve_node] Hybrid Retriever fetch error: {e}")
 
-    # 2. Live precedent search: শুধু স্পষ্ট কিওয়ার্ড থাকলে
-    normalized_q = query.lower()
-    if any(term in normalized_q for term in PRECEDENT_TRIGGERS):
+    # 2. Live Precedent Search (MCP) - only if router flagged it
+    if needs_case_law:
         try:
-            logger.info(f"[retrieve_node] Triggering live precedent search for: {query}")
-            for hit in search_live_bd_judgements(query=query, max_results=2):
+            logger.info(f"[retrieve_node] Triggering MCP live case law search for: {query}")
+            # ✅ FIX: search_live_bd_judgements এখন async, তাই await যোগ করা হলো
+            live_results = await search_live_bd_judgements(query=query, max_results=3)
+            
+            for hit in live_results:
                 snippet = hit.get("snippet", "").strip()
                 if snippet:
                     context_docs.append({
@@ -181,35 +176,35 @@ async def retrieve_node(state: QAState) -> dict:
                         "content": f"{snippet}\nReference Source: {hit.get('reference_url')}",
                         "source_type": "precedent",
                         "reference_url": hit.get("reference_url", ""),
-                        "metadata": {"url": hit.get("reference_url")},
+                        # ✅ FIX: metadata-তে tier যুক্ত করা হলো (Tier 1 বা 2)
+                        "metadata": {
+                            "url": hit.get("reference_url"),
+                            "tier": hit.get("tier", 2) 
+                        },
                     })
         except Exception as e:
-            logger.exception(f"[retrieve_node] FastMCP live judgment error: {e}")
+            logger.exception(f"[retrieve_node] MCP live judgment error: {e}")
     else:
-        logger.info("[retrieve_node] Skipped external web search to optimize latency.")
+        logger.info("[retrieve_node] Skipped MCP web search.")
 
     return {"retrieved_docs": context_docs}
 
 
 async def generate_answer_node(state: QAState) -> dict:
-    """রিট্রিভ হওয়া ধারার ওপর ভিত্তি করে সুন্দর ও কাঠামোগত উত্তর তৈরি করে।"""
+    """রিট্রিভ হওয়া ধারার ওপর ভিত্তি করে কাঠামোগত JSON উত্তর তৈরি করে।"""
     query = state.get("query", "")
     raw_docs = state.get("retrieved_docs", []) or []
     history_messages = state.get("messages", [])
     contract_context = state.get("contract_context", "")
 
-    statutory_blocks, precedent_blocks, verification_texts = [], [], []
+    statutory_blocks, precedent_blocks = [], []
 
     for d in raw_docs:
-        if not isinstance(d, dict):
-            continue
+        if not isinstance(d, dict): continue
         text = d.get("text") or d.get("content", "")
         act = d.get("act", "Bangladesh Statute")
         sec = d.get("section", "")
         title = d.get("title", "")
-
-        if text and d.get("source_type") != "precedent":
-            verification_texts.append(f"Act: {act}\nSection: {sec}\nTitle: {title}\nText: {text}")
 
         if d.get("source_type") == "precedent":
             precedent_blocks.append(f"• [Case Precedent]: {title}\n  Summary: {text}")
@@ -219,22 +214,19 @@ async def generate_answer_node(state: QAState) -> dict:
                 header_info += f" ({title})"
             statutory_blocks.append(f"=== STATUTE: {header_info} ===\n{text}")
 
-    # কনটেক্সট না থাকলে মেমোরি থেকে মনগড়া উত্তর আসার ঝুঁকি বন্ধ
+    # কনটেক্সট না থাকলে
     if not statutory_blocks and not precedent_blocks and not contract_context:
         logger.warning(f"[generate_answer_node] no context for query: {query[:80]!r}")
         return {
             "final_answer": NO_CONTEXT_ANSWER,
             "retrieved_docs": raw_docs,
             "citation_verified": False,
+            "structured_response": None
         }
 
     context_sections = []
-    
     if contract_context:
-        context_sections.append(
-            f"=== CURRENT CONTRACT CONTEXT ===\n{contract_context}\n================================"
-        )
-
+        context_sections.append(f"=== CURRENT CONTRACT CONTEXT ===\n{contract_context}\n================================")
     if statutory_blocks:
         context_sections.append("VERIFIED_STATUTORY_CONTEXT:\n" + "\n\n".join(statutory_blocks))
     if precedent_blocks:
@@ -246,7 +238,7 @@ async def generate_answer_node(state: QAState) -> dict:
         f"{context_text}\n\n"
         f"================================\n"
         f"Client Legal Query:\n{query}\n\n"
-        f"Instructions: Provide a well-structured, clear, and accurate response based strictly on the verified context above."
+        f"Instructions: Provide a well-structured, clear, and accurate response based strictly on the verified context above. Return strictly a JSON object."
     )
 
     try:
@@ -257,35 +249,36 @@ async def generate_answer_node(state: QAState) -> dict:
         messages.append(HumanMessage(content=user_prompt))
 
         response = await llm.ainvoke(messages)
+        raw_answer = _content_text(getattr(response, "content", response))
         
-        answer_text = ""
-        content = getattr(response, "content", response)
-        if isinstance(content, list):
-            answer_text = "".join(
-                item.get("text", "") if isinstance(item, dict) else str(item) for item in content
-            ).strip()
-        elif isinstance(content, str):
-            answer_text = content.strip()
+        # ✅ FIX: Parse the JSON output from LLM
+        parsed_json = _json_object(raw_answer)
+        
+        if parsed_json and "detailed_answer" in parsed_json:
+            final_text = parsed_json.get("detailed_answer", "")
+        else:
+            # Fallback if LLM failed to output proper JSON
+            final_text = raw_answer
+            parsed_json = {
+                "detailed_answer": final_text,
+                "cited_sections": [],
+                "cited_cases": [],
+                "suggested_next_steps": []
+            }
 
-        if not answer_text:
+        if not final_text:
             raise RuntimeError("LLM returned an empty answer")
 
     except Exception as exc:
         logger.error(f"[generate_answer_node] Error invoking LLM: {exc}")
         raise exc
 
-    # Citation verifier
-    is_verified = False
-    try:
-        result = verifier.verify_citations(answer_text, verification_texts)
-        is_verified = bool(result.get("citation_verified", False))
-    except Exception as e:
-        logger.error(f"[generate_answer_node] verifier error: {e}")
-
+    # Note: Strict citation verification will happen in chat.py based on the parsed_json
     return {
-        "final_answer": answer_text,
+        "final_answer": final_text,
+        "structured_response": parsed_json,
         "retrieved_docs": raw_docs,
-        "citation_verified": is_verified,
+        "citation_verified": True, # Assuming true here, chat.py will do the strict check
     }
 
 

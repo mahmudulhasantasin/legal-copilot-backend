@@ -1,11 +1,10 @@
 import os
+from typing import Optional  # ✅ Optional ইমপোর্ট করা হলো
 from dotenv import load_dotenv
-# ✅ SettingsConfigDict ইমপোর্ট করা হলো
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ✅ override=True যোগ করা হলো যাতে .env ফাইলের নতুন ভ্যালু আগেরগুলোকে ওভাররাইড করতে পারে
 load_dotenv(override=True)
-
 
 class Settings(BaseSettings):
     # Relational Database (Supabase PostgreSQL)
@@ -15,14 +14,7 @@ class Settings(BaseSettings):
     QDRANT_URL: str = os.getenv("QDRANT_URL", "")
     QDRANT_API_KEY: str = os.getenv("QDRANT_API_KEY", "")
     
-    # ✅ নতুন ১০২৪ ডাইমেনশন কালেকশন এবং মডেলের নাম ডিফল্ট হিসেবে বসানো হলো
-    #QDRANT_COLLECTION_NAME: str = os.getenv("QDRANT_COLLECTION_NAME", "bd_laws_v2")
-    #EMBED_MODEL: str = os.getenv("EMBED_MODEL", "intfloat/multilingual-e5-large")
-
-    # app/config.py ফাইলে এই দুটি লাইন খুঁজে নিন এবং পরিবর্তন করুন:
-
-    #JINA_API_KEY: str = os.getenv("JINA_API_KEY", "")
-        # ✅ Hugging Face API Key
+    # ✅ Hugging Face API Key
     HF_TOKEN: str = os.getenv("HF_TOKEN", "")
     
     # ✅ নতুন ছোট মডেল এবং কালেকশনের নাম
@@ -40,6 +32,9 @@ class Settings(BaseSettings):
     GOOGLE_APPLICATION_CREDENTIALS: str = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
 
+    # ✅ Tavily API Key (নতুন যুক্ত করা হলো)
+    TAVILY_API_KEY: Optional[str] = os.getenv("TAVILY_API_KEY", None)
+
     # ✅ Supabase Storage Configuration (অডিটে পাওয়া ৫০০ এরর ফিক্স করার জন্য)
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
     SUPABASE_SERVICE_KEY: str = os.getenv("SUPABASE_SERVICE_KEY", "")
@@ -49,7 +44,6 @@ class Settings(BaseSettings):
 
     # ✅ Pydantic V2 এর নতুন কনফিগারেশন
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
-
 
 settings = Settings()
 
@@ -67,5 +61,7 @@ GROQ_API_KEY = settings.GROQ_API_KEY
 GOOGLE_APPLICATION_CREDENTIALS = settings.GOOGLE_APPLICATION_CREDENTIALS
 SUPABASE_URL = settings.SUPABASE_URL
 SUPABASE_SERVICE_KEY = settings.SUPABASE_SERVICE_KEY
-#JINA_API_KEY = settings.JINA_API_KEY
 BKASH_MERCHANT_NUMBER = settings.BKASH_MERCHANT_NUMBER
+
+# ✅ Tavily Direct Export (প্রয়োজন হলে)
+TAVILY_API_KEY = settings.TAVILY_API_KEY
