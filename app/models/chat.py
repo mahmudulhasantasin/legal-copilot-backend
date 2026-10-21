@@ -146,6 +146,12 @@ class ChatMessage(Base):
 
     # ── Citations & Sources ──
     citations: Mapped[Optional[list[dict]]] = mapped_column(JSON, nullable=True)
+    
+    # ✅ নতুন যোগ করা ৩টি কলাম
+    cited_cases: Mapped[Optional[list[dict]]] = mapped_column(JSON, nullable=True)
+    suggested_next_steps: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
+    needs_clarification: Mapped[bool] = mapped_column(Boolean, default=False)
+    
     retrieved_docs_snapshot: Mapped[Optional[list[dict]]] = mapped_column(JSON, nullable=True)
     # Snapshot of RAG docs used — for debugging/audit
 
