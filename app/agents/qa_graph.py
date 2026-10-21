@@ -168,7 +168,6 @@ async def retrieve_node(state: QAState) -> dict:
     if needs_case_law:
         try:
             logger.info(f"[retrieve_node] Triggering MCP live case law search for: {query}")
-            # ✅ FIX: search_live_bd_judgements এখন async, তাই await যোগ করা হলো
             live_results = await search_live_bd_judgements(query=query, max_results=3)
             
             for hit in live_results:
@@ -182,7 +181,6 @@ async def retrieve_node(state: QAState) -> dict:
                         "content": f"{snippet}\nReference Source: {hit.get('reference_url')}",
                         "source_type": "precedent",
                         "reference_url": hit.get("reference_url", ""),
-                        # ✅ FIX: metadata-তে tier যুক্ত করা হলো (Tier 1 বা 2)
                         "metadata": {
                             "url": hit.get("reference_url"),
                             "tier": hit.get("tier", 2) 
@@ -213,7 +211,13 @@ async def generate_answer_node(state: QAState) -> dict:
         title = d.get("title", "")
 
         if d.get("source_type") == "precedent":
-            precedent_blocks.append(f"• [Case Precedent]: {title}\n  Summary: {text}")
+            # ✅ FIX: কেস ল'র সাথে সোর্স লিংক এবং টাইটেল স্পষ্টভাবে LLM-কে দেখানো হচ্ছে
+            ref_url = d.get("reference_url", "") or d.get("metadata", {}).get("url", "")
+            precedent_blocks.append(
+                f"• [LIVE WEB RESULT]: {title}\n"
+                f"  Snippet: {text}\n"
+                f"  Source URL: {ref_url}"
+            )
         else:
             header_info = f"{act} | Section: {sec}".strip(" |")
             if title:
@@ -236,7 +240,8 @@ async def generate_answer_node(state: QAState) -> dict:
     if statutory_blocks:
         context_sections.append("VERIFIED_STATUTORY_CONTEXT:\n" + "\n\n".join(statutory_blocks))
     if precedent_blocks:
-        context_sections.append("VERIFIED_CASE_CONTEXT:\n" + "\n\n".join(precedent_blocks))
+        # ✅ FIX: LLM-কে বলা হচ্ছে এটি লাইভ ওয়েব সার্চের রেজাল্ট
+        context_sections.append("VERIFIED_CASE_CONTEXT (Live Web Search Results - MUST BE CITED IN DETAILED ANSWER & JSON):\n" + "\n\n".join(precedent_blocks))
         
     context_text = "\n\n---\n\n".join(context_sections)
 
@@ -257,13 +262,11 @@ async def generate_answer_node(state: QAState) -> dict:
         response = await llm.ainvoke(messages)
         raw_answer = _content_text(getattr(response, "content", response))
         
-        # ✅ FIX: Parse the JSON output from LLM
         parsed_json = _json_object(raw_answer)
         
         if parsed_json and "detailed_answer" in parsed_json:
             final_text = parsed_json.get("detailed_answer", "")
         else:
-            # Fallback if LLM failed to output proper JSON
             final_text = raw_answer
             parsed_json = {
                 "detailed_answer": final_text,
@@ -279,12 +282,11 @@ async def generate_answer_node(state: QAState) -> dict:
         logger.error(f"[generate_answer_node] Error invoking LLM: {exc}")
         raise exc
 
-    # Note: Strict citation verification will happen in chat.py based on the parsed_json
     return {
         "final_answer": final_text,
         "structured_response": parsed_json,
         "retrieved_docs": raw_docs,
-        "citation_verified": True, # Assuming true here, chat.py will do the strict check
+        "citation_verified": True,
     }
 
 

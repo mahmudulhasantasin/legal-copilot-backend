@@ -24,7 +24,7 @@ from app.models.lawyer import LawyerProfile
 from app.models.memo import ContractMemo, Contract, HITLStatus
 from app.agents.qa_graph import qa_graph
 from app.services.llm_provider import get_llm
-from app.services.verifier import verifier # ✅ নতুন ভেরিফায়ার ইমপোর্ট
+from app.services.verifier import verifier 
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["Legal Chat"])
@@ -40,7 +40,6 @@ class CitedSectionDetail(BaseModel):
     provision_summary: Optional[str] = ""
     relevance: Optional[str] = ""
 
-# ✅ নতুন স্কিমা: কেস ল' (Case Law) এর জন্য
 class CitedCaseDetail(BaseModel):
     case_name: str
     ruling: Optional[str] = ""
@@ -49,9 +48,9 @@ class CitedCaseDetail(BaseModel):
 class StructuredLegalResponse(BaseModel):
     detailed_answer: str
     cited_sections: List[CitedSectionDetail] = Field(default_factory=list)
-    cited_cases: List[CitedCaseDetail] = Field(default_factory=list) # ✅ নতুন যুক্ত হলো
+    cited_cases: List[CitedCaseDetail] = Field(default_factory=list) 
     suggested_next_steps: List[str] = Field(default_factory=list)
-    needs_clarification: bool = False # ✅ নতুন যুক্ত হলো
+    needs_clarification: bool = False 
 
 class CreateSessionRequest(BaseModel):
     mode: str = Field(default="GENERAL", description="GENERAL, LAWYER_RESEARCH, or USER_CONTRACT")
@@ -80,7 +79,6 @@ def _format_agent_output(structured_response: dict, raw_answer: str, retrieved_d
     and returns a safe StructuredLegalResponse.
     """
     if not structured_response:
-        # Fallback if LLM failed to output JSON
         return StructuredLegalResponse(
             detailed_answer=raw_answer,
             cited_sections=[],
@@ -95,10 +93,10 @@ def _format_agent_output(structured_response: dict, raw_answer: str, retrieved_d
     raw_sections = structured_response.get("cited_sections", [])
     raw_cases = structured_response.get("cited_cases", [])
 
-    # 1. ✅ STRICT VERIFICATION: Cross-check with retrieved context
+    # 1. STRICT VERIFICATION: Cross-check with retrieved context
     verification = verifier.verify_structured_response(structured_response, retrieved_docs)
     
-    # 2. Filter Sections (Only keep valid/hallucination-free sections)
+    # 2. Filter Sections
     final_sections = []
     verified_sec_map = { f"{v.get('act','')}_{v.get('section','')}".lower(): v.get('valid') for v in verification.get("verified_sections", []) }
     
@@ -113,15 +111,22 @@ def _format_agent_output(structured_response: dict, raw_answer: str, retrieved_d
                 relevance=s.get("relevance", "Primary statutory grounding.")
             ))
     
-    # 3. Filter Cases (Only keep valid cases)
+    # 3. Filter Cases (UPDATED: Bypass strict verifier for Live Web Results/URLs)
     final_cases = []
     verified_case_map = { c.get('case_name','').lower(): c.get('valid') for c in verification.get("verified_cases", []) }
     
     for c in raw_cases:
-        if verified_case_map.get(c.get("case_name","").lower(), False):
+        case_name = c.get("case_name", "")
+        ruling = c.get("ruling", "")
+        
+        # ✅ FIX: If it's a live web result (contains http), we bypass strict verifier
+        has_url = "http" in ruling.lower() or "http" in case_name.lower()
+        is_verified = verified_case_map.get(case_name.lower(), False)
+        
+        if is_verified or has_url:
             final_cases.append(CitedCaseDetail(
-                case_name=c.get("case_name", ""),
-                ruling=c.get("ruling", ""),
+                case_name=case_name,
+                ruling=ruling,
                 relevance=c.get("relevance", "Relevant judicial precedent.")
             ))
 
@@ -280,9 +285,9 @@ async def get_session_history(
                 "role": m.role,
                 "content": m.content,
                 "citations": m.citations,
-                "cited_cases": m.cited_cases,                   # ✅ নতুন যুক্ত হলো
-                "suggested_next_steps": m.suggested_next_steps, # ✅ নতুন যুক্ত হলো
-                "needs_clarification": m.needs_clarification,   # ✅ নতুন যুক্ত হলো
+                "cited_cases": m.cited_cases,                   
+                "suggested_next_steps": m.suggested_next_steps, 
+                "needs_clarification": m.needs_clarification,   
                 "created_at": m.created_at
             }
             for m in messages
@@ -403,7 +408,6 @@ DETAILED CLAUSES ANALYSIS:
         "contract_id": session.scoped_contract_id,
         "contract_context": contract_context,
         "language": lang,
-        # নতুন ফিল্ডগুলো রিসেট করা হলো
         "query_type": None,
         "needs_case_law": False,
         "structured_response": None
@@ -437,9 +441,9 @@ DETAILED CLAUSES ANALYSIS:
         role="assistant", 
         content=structured_res.detailed_answer,
         citations=[c.model_dump() for c in structured_res.cited_sections],
-        cited_cases=[c.model_dump() for c in structured_res.cited_cases],             # ✅ নতুন
-        suggested_next_steps=structured_res.suggested_next_steps,                   # ✅ নতুন
-        needs_clarification=structured_res.needs_clarification,                     # ✅ নতুন
+        cited_cases=[c.model_dump() for c in structured_res.cited_cases],             
+        suggested_next_steps=structured_res.suggested_next_steps,                   
+        needs_clarification=structured_res.needs_clarification,                     
         language_detected=lang
     )
     
