@@ -18,16 +18,16 @@ NO_CONTEXT_ANSWER = (
     "অনুগ্রহ করে আপনার পরিস্থিতি বা ঘটনাটি আরও সুনির্দিষ্টভাবে লিখুন।"
 )
 
-# ✅ আপডেটেড রাউটার প্রম্পট: ক্লারিফিকেশন এবং কেস ল' ডিটেকশন যুক্ত করা হলো
+# ✅ আপডেটেড রাউটার প্রম্পট: সাধারণ আইনি প্রশ্নে আর ক্লারিফিকেশন চাইবে না
 QUERY_ROUTER_PROMPT = """
 You are the intelligent query router for Advotech Copilot, a Bangladesh-law assistant.
 Classify the CURRENT request as exactly one of:
 1. "OUT_OF_SCOPE": Clearly unrelated to law, coding, weather, recipes, etc.
 2. "INSUFFICIENT_EVIDENCE": Explicitly asks for another country's jurisdiction rather than Bangladesh law.
-3. "NEEDS_CLARIFICATION": Potentially legal, but vague or missing crucial facts (e.g., "I got fired", "My landlord evicted me"). 
-4. "ANSWERABLE": Specific legal question or has enough context to provide a detailed answer.
+3. "NEEDS_CLARIFICATION": ONLY use this when the user is describing a personal incident/event but missing crucial facts (e.g., "I got fired", "My landlord evicted me"). DO NOT use this if the user is asking for a general statutory lookup (e.g., "Which article has the right to equality?", "What is Section 138?").
+4. "ANSWERABLE": Specific legal question, statutory lookup, or has enough context to provide a detailed answer.
 
-ALSO, determine if this query requires searching for live case law/precedents (e.g., asks for verdicts, recent rulings, or is a complex real-world dispute).
+ALSO, determine if this query requires searching for live case law/precedents (e.g., asks for recent verdicts, supreme court rulings, or is a complex real-world dispute).
 Return ONLY JSON: {
   "status":"ANSWERABLE|NEEDS_CLARIFICATION|OUT_OF_SCOPE|INSUFFICIENT_EVIDENCE",
   "needs_case_law": true|false,
@@ -73,6 +73,10 @@ def _fallback_route(query, contract_context):
     if any(term in q for term in off_topic):
         return "OUT_OF_SCOPE", False, "আমি বাংলাদেশি আইন, আইনি প্রক্রিয়া ও চুক্তি-সংক্রান্ত প্রশ্নে সহায়তা করি।"
     
+    # ✅ FIX: যদি প্রশ্নে Section বা Article থাকে, তবে সরাসরি Answerable
+    if any(k in q for k in ["section", "article", "ধারা", "অনুচ্ছেদ"]):
+        return "ANSWERABLE", True, ""
+
     if len(q.split()) <= 2:
         return "NEEDS_CLARIFICATION", False, "অনুগ্রহ করে আপনার পরিস্থিতি বা আইনি সমস্যাটি আরও বিস্তারিতভাবে লিখুন, যাতে আমি সঠিক আইন ও ধারা বলতে পারি।"
         
@@ -86,6 +90,11 @@ async def classify_query_node(state: QAState) -> dict:
     
     if not query:
         return {"final_answer": "অনুগ্রহ করে আপনার আইনি প্রশ্নটি লিখুন।", "retrieved_docs": [], "citation_verified": False}
+
+    # ✅ FIX: যদি ইউজার সরাসরি কোনো ধারা/অনুচ্ছেদ জিজ্ঞেস করে, তবে LLM রাউটার বাইপাস করে সরাসরি সার্চে যাবে
+    if re.search(r"(section|article|ধারা|অনুচ্ছেদ)\s*\d+", query, re.IGNORECASE):
+        logger.info("[classify_query_node] Bypassing LLM router (Explicit Section/Article detected).")
+        return {"final_answer": None, "query_type": "ANSWERABLE", "needs_case_law": False, "retrieved_docs": [], "citation_verified": False}
         
     try:
         llm = get_llm()
@@ -107,15 +116,12 @@ async def classify_query_node(state: QAState) -> dict:
         if status not in {"ANSWERABLE", "NEEDS_CLARIFICATION", "OUT_OF_SCOPE", "INSUFFICIENT_EVIDENCE"}:
             status, needs_case_law, response = _fallback_route(query, contract_context)
 
-        # ✅ FIX: If clarification is needed, stop here and ask the user
         if status == "NEEDS_CLARIFICATION" and not contract_context:
             return {"final_answer": response, "query_type": status, "retrieved_docs": [], "citation_verified": False}
 
-        # ✅ FIX: If out of scope, stop here
         if status in {"OUT_OF_SCOPE", "INSUFFICIENT_EVIDENCE"}:
             return {"final_answer": response, "query_type": status, "retrieved_docs": [], "citation_verified": False}
 
-        # Proceed to retrieval
         return {"final_answer": None, "query_type": "ANSWERABLE", "needs_case_law": needs_case_law, "retrieved_docs": [], "citation_verified": False}
 
     except Exception:

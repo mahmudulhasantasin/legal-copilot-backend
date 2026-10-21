@@ -59,31 +59,28 @@ def _parse_json_object(text: str) -> dict:
     return json.loads(text[start:end + 1])
 
 
+# ✅ নতুন ইউনিভার্সাল প্রম্পট: LLM-কে হুবহু নাম বলতে বাধ্য করা হয়নি
 ROUTER_PROMPT = """You are an expert Legal Query Reformulator for Bangladesh Law.
-Your core task is to bridge the "Semantic Gap" between a user's layman terms (Bengali, Banglish, or English) and formal legal terminology in Bangladesh statutes.
+Your core task is to analyze the user's query and extract the Act names and Section numbers.
 
-COMMON BANGLADESH ACT MAPPINGS:
-- Contract, agreement, breach, indemnity, guarantee, agency, চুক্তি, চুক্তি ভঙ্গ, ক্ষতিপূরণ -> "The Contract Act, 1872"
-- Job, worker, termination, layoff, wages, maternity, leave, শ্রম, চাকরি, ছাঁটাই, বেতন, শ্রমিক -> "Bangladesh Labour Act, 2006"
-- Crime, murder, theft, extortion, fraud, cheating, hurt, defamation, চুরি, প্রতারণা, খুন, মারামারি, হুমকি, মানহানি -> "The Penal Code, 1860"
-- Police, FIR, GD, arrest, bail, remand, investigation, trial, জামিন, গ্রেপ্তার, এজাহার, জিডি, রিমান্ড, ফৌজদারি কার্যবিধি -> "The Code of Criminal Procedure, 1898"
-- Civil suit, injunction, decree, summon, দেওয়ানি মামলা, নিষেধাজ্ঞা, ডিক্রি -> "The Code of Civil Procedure, 1908"
-- Cheque dishonor, bounced cheque, promissory note, চেক ডিজঅনার, ব্যাংক চেক প্রত্যাখ্যান -> "The Negotiable Instruments Act, 1881" (inferred_sections: ["138"])
-- Land sale, mortgage, lease, gift, eviction, জমি হস্তান্তর, দলিল, ভাড়া, ইজারা, হেবা -> "The Transfer of Property Act, 1882"
-- Specific performance, recovery of possession, declaration, দখল পুনরুদ্ধার, চুক্তি বলবৎ -> "The Specific Relief Act, 1877"
-- Evidence, witness, burden of proof, confession, সাক্ষ্য, প্রমাণ, সাক্ষী -> "The Evidence Act, 1872"
-- Limitation period, deadline to file suit/appeal, তামাদি, মামলা করার সময়সীমা -> "The Limitation Act, 1908"
-- Company, director, shareholder, winding up, কোম্পানি, শেয়ারহোল্ডার, পরিচালক -> "The Companies Act, 1994"
-- Arbitration, dispute resolution, সালিশ, মধ্যস্থতা -> "The Arbitration Act, 2001"
+CRITICAL RULES FOR ACT EXTRACTION:
+1. Do NOT guess the full official title (like "The Penal Code, 1860"). Just extract the core English or Bengali keywords the user used.
+   - If user asks about Constitution/equality/fundamental rights -> return ["Constitution"]
+   - If user asks about Penal Code/murder/theft/crime -> return ["Penal Code"]
+   - If user asks about Labour Act/job/termination -> return ["Labour Act"]
+   - If user asks about Contract Act/agreement/breach -> return ["Contract Act"]
+   - If user asks about NI Act/cheque dishonor -> return ["Negotiable Instruments Act"]
+   - If user asks about CPC/civil suit -> return ["Code of Civil Procedure"]
+   - If user asks about CrPC/bail/FIR -> return ["Code of Criminal Procedure"]
+2. Only include `detected_acts` if the query clearly relates to a specific Law/Act. If unsure or if multiple unknown laws might apply, leave it empty `[]`.
+3. If the user specifies a section or article number (e.g., "২৭ নং অনুচ্ছেদ", "Section 138"), add it to `explicit_sections`.
+4. Only add `inferred_sections` when you are highly confident (e.g., "চেক ডিজঅনার" -> infer "138", "সমতার অধিকার" -> infer "27", "28").
+5. In `optimized_query`, write a rich semantic search string containing both English and Bengali legal terms to maximize vector search recall. Include the exact words the user used.
 
-CRITICAL RULES:
-1. Only include `detected_acts` if the query clearly relates to that specific Act. If unsure or if multiple unknown laws might apply, leave `detected_acts` empty `[]` so the retriever searches across all laws.
-2. Only add `inferred_sections` when you are highly confident of the exact statutory section (e.g., ["73", "74"] for breach of contract damages, ["27"] for restraint of trade, ["138"] for cheque dishonor, ["420", "406"] for fraud/breach of trust).
-3. In `optimized_query`, write a rich semantic search string containing both English legal terms and Bengali legal terms to maximize vector search recall.
-
-Analyze the user's query (and chat history if provided) and respond ONLY with a strict JSON object:
+Respond ONLY with a strict JSON object:
 {
   "detected_acts": [],
+  "explicit_sections": [],
   "inferred_sections": [],
   "optimized_query": "Expanded semantic search string in both Bengali and English."
 }"""
@@ -94,16 +91,19 @@ def _fallback(user_query: str, explicit: List[str]) -> AnalyzedQuery:
     inferred_secs = []
     q_lower = user_query.lower()
     
+    # ✅ Fallback-এও নতুন কী-ওয়ার্ড যোগ করা হলো
+    if any(k in q_lower for k in ("constitution", "সংবিধান", "মৌলিক অধিকার", "fundamental rights")):
+        detected_acts.append("Constitution")
     if any(k in q_lower for k in ("contract", "চুক্তি", "vhong", "ভঙ্গ", "agreement")):
-        detected_acts.append("The Contract Act, 1872")
+        detected_acts.append("Contract Act")
     if any(k in q_lower for k in ("labour", "labor", "শ্রম", "chakri", "চাকরি", "বেতন", "শ্রমিক", "ছাঁটাই")):
-        detected_acts.append("Bangladesh Labour Act, 2006")
+        detected_acts.append("Labour Act")
     if any(k in q_lower for k in ("penal", "crime", "শাস্তি", "খুন", "চুরি", "প্রতারণা", "হুমকি", "মারামারি")):
-        detected_acts.append("The Penal Code, 1860")
+        detected_acts.append("Penal Code")
     if any(k in q_lower for k in ("bail", "arrest", "জামিন", "গ্রেপ্তার", "মামলা", "থানা", "জিডি", "এজাহার")):
-        detected_acts.append("The Code of Criminal Procedure, 1898")
+        detected_acts.append("Code of Criminal Procedure")
     if any(k in q_lower for k in ("cheque", "চেক", "ডিজঅনার", "dishonor", "dishonour")):
-        detected_acts.append("The Negotiable Instruments Act, 1881")
+        detected_acts.append("Negotiable Instruments Act")
         inferred_secs.append("138")
 
     return AnalyzedQuery(

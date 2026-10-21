@@ -6,7 +6,13 @@ from qdrant_client import models
 from app.config import settings
 from app.services.vector_store import vector_manager
 from app.services.query_analyzer import analyze_query_dynamically
-from app.services.legal_normalizer import normalize_section, normalize_act, resolve_act
+# ✅ FIX: resolve_act_robust এবং get_section_variants ইমপোর্ট করা হলো
+from app.services.legal_normalizer import (
+    normalize_section, 
+    normalize_act, 
+    resolve_act_robust, 
+    get_section_variants
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,12 +57,22 @@ class ProductionHybridRetriever:
     # ---------------- Path A: Exact Section Lookup ----------------
     def _targeted_lookup(self, act: Optional[str], sections: List[str], limit: int = 12,
                          score: float = PATH_A_SCORE) -> List[tuple]:
-        act_norm = resolve_act(act)
+        # ✅ FIX: resolve_act_robust ব্যবহার করা হলো যাতে ৩৫২৫টি অ্যালিয়াস কাজে লাগে
+        act_norm = resolve_act_robust(act)
+        
         secs = []
         for s in sections[:6]:
-            n = normalize_section(s)
-            if n and n not in secs:
-                secs.append(n)
+            # ✅ FIX: get_section_variants ব্যবহার করে বাংলা ও ইংরেজি ভ্যারিয়েন্ট বের করা হলো
+            variants = get_section_variants(s)
+            if variants:
+                for v in variants:
+                    if v and v not in secs:
+                        secs.append(v)
+            else:
+                # Fallback যদি ভ্যারিয়েন্ট না পাওয়া যায়
+                n = normalize_section(s)
+                if n and n not in secs:
+                    secs.append(n)
 
         if not secs:
             return []
@@ -64,6 +80,7 @@ class ProductionHybridRetriever:
         must_conditions = [
             models.FieldCondition(key="metadata.section_norm", match=models.MatchAny(any=secs))
         ]
+        
         if act_norm:
             must_conditions.insert(
                 0, models.FieldCondition(key="metadata.act_norm", match=models.MatchValue(value=act_norm))
@@ -121,7 +138,8 @@ class ProductionHybridRetriever:
         return hits
 
     def _dense_semantic_search(self, search_text: str, act: Optional[str], limit: int = 8) -> List[tuple]:
-        act_norm = resolve_act(act)
+        # ✅ FIX: resolve_act_robust ব্যবহার করা হলো
+        act_norm = resolve_act_robust(act)
         q_filter = None
         if act_norm:
             q_filter = models.Filter(must=[
