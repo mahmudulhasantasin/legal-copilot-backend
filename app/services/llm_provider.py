@@ -71,11 +71,11 @@ def get_llm() -> BaseChatModel:
     if groq_key:
         try:
             primary_llm = ChatGroq(
-                model="qwen/qwen3.6-27b",  # ✅ নতুন রিকমেন্ডেড মডেল
+                model="qwen/qwen3.8-27b",  # ✅ নতুন রিকমেন্ডেড মডেল
                 api_key=groq_key,
                 temperature=0.1,
                 max_tokens=1800, # ✅ খুব গুরুত্বপূর্ণ!
-                max_retries=1,
+                max_retries=3,
                 timeout=60.0
             )   
             logger.info("Groq primary LLM initialized successfully.")
@@ -92,7 +92,7 @@ def get_llm() -> BaseChatModel:
                 google_api_key=gemini_key,
                 temperature=0.1,              # ✅ কমিয়ে 0.1 করা হলো
                 max_output_tokens=2500,        # ✅ সর্বোচ্চ 2500 টোকেন 
-                max_retries=0,          
+                max_retries=3,          
                 timeout=60.0                 # ✅ ৬০ সেকেন্ডের বদলে ৫ সেকেন্ড
             )
             logger.info("Gemini fallback LLM initialized successfully.")
