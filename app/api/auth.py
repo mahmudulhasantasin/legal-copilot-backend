@@ -126,7 +126,12 @@ class UserResponse(BaseModel):
     role: UserRole
     subscription_tier: SubscriptionTier
     credit_balance: int
-    enterprise_credit_balance: Optional[int] = None # ✅ NEW: Company Pool Balance
+    enterprise_credit_balance: Optional[int] = None 
+    
+    # ✅ NEW: Member Quota Details (Only populated for Enterprise Member)
+    member_credit_quota: Optional[int] = None
+    member_credit_used: Optional[int] = None
+    
     is_active: bool
     is_verified: bool
     enterprise_id: Optional[int] = None
@@ -436,7 +441,9 @@ async def get_me(
         role=current_user.role,
         subscription_tier=current_user.subscription_tier,
         credit_balance=current_user.credit_balance,
-        enterprise_credit_balance=None, # Default
+        enterprise_credit_balance=None,
+        member_credit_quota=None, # ✅ NEW Default
+        member_credit_used=None,  # ✅ NEW Default
         is_active=current_user.is_active,
         is_verified=current_user.is_verified,
         enterprise_id=current_user.enterprise_id,
@@ -444,13 +451,18 @@ async def get_me(
         lawyer_profile=None
     )
 
-    # ✅ NEW: Fetch Company Pool Balance for Enterprise Roles
+    # ✅ Fetch Company Pool Balance for Enterprise Roles
     if current_user.role in (UserRole.ENTERPRISE_ADMIN, UserRole.ENTERPRISE_MEMBER) and current_user.enterprise_id:
         enterprise = await db.scalar(
             select(Enterprise).where(Enterprise.id == current_user.enterprise_id)
         )
         if enterprise:
             response.enterprise_credit_balance = enterprise.credit_balance
+
+    # ✅ NEW: Populate Member Quota Details (Only for ENTERPRISE_MEMBER)
+    if current_user.role == UserRole.ENTERPRISE_MEMBER:
+        response.member_credit_quota = current_user.member_credit_quota
+        response.member_credit_used = current_user.member_credit_used
 
     # ✅ Fetch Lawyer Profile
     if current_user.role == UserRole.LAWYER:
