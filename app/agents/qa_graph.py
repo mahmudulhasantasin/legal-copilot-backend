@@ -18,16 +18,25 @@ NO_CONTEXT_ANSWER = (
     "অনুগ্রহ করে আপনার পরিস্থিতি বা ঘটনাটি আরও সুনির্দিষ্টভাবে লিখুন।"
 )
 
+# ✅ ডাইনামিক রাউটার প্রম্পট (কোনো হার্ডকোড নেই, বরং Few-Shot Examples দেওয়া আছে)
 QUERY_ROUTER_PROMPT = """
 You are the intelligent query router for Advotech Copilot, a Bangladesh-law assistant.
 Classify the CURRENT request as exactly one of:
 1. "OUT_OF_SCOPE": Clearly unrelated to law, coding, weather, recipes, etc.
 2. "INSUFFICIENT_EVIDENCE": Explicitly asks for another country's jurisdiction rather than Bangladesh law.
-3. "NEEDS_CLARIFICATION": ONLY use this when the user gives an extremely vague one-liner with ZERO context (e.g., "I got fired"). 
-   - CRITICAL: If the user is answering a previous question, providing specific facts (e.g., "part time", "na", "no notice", "2 years"), you MUST set this to "ANSWERABLE".
+3. "NEEDS_CLARIFICATION": ONLY use this when the user gives an extremely vague one-liner with ZERO context.
 4. "ANSWERABLE": Specific legal question, statutory lookup, or has enough context to provide a detailed answer.
 
-ALSO, determine if this query requires searching for live case law/precedents (e.g., asks for recent verdicts, supreme court rulings, or is a complex real-world dispute).
+CRITICAL RULES FOR CLASSIFICATION:
+- If the user is answering a previous clarifying question (e.g., "part time", "na", "no notice", "2 years"), you MUST classify as "ANSWERABLE".
+- If the user provides a detailed scenario, even if they are missing some facts, you MUST classify as "ANSWERABLE".
+
+EXAMPLES:
+- Query: "আমাকে চাকরি থেকে বাদ দিয়েছে।" -> "NEEDS_CLARIFICATION" (Too vague, missing facts)
+- Query: "আমার কোম্পানি আমাকে ৩ মাসের নোটিশ না দিয়েই বের করে দিয়েছে।" -> "ANSWERABLE" (Has specific facts, direct answer possible)
+- Query: "What is Section 138?" -> "ANSWERABLE" (Statutory lookup)
+
+ALSO, determine if this query requires searching for live case law/precedents (e.g., asks for recent verdicts, supreme court rulings).
 Return ONLY JSON: {
   "status":"ANSWERABLE|NEEDS_CLARIFICATION|OUT_OF_SCOPE|INSUFFICIENT_EVIDENCE",
   "needs_case_law": true|false,
@@ -62,6 +71,7 @@ def _json_object(value):
 
 
 def _fallback_route(query, contract_context):
+    """Fallback if LLM API fails completely"""
     q = (query or "").strip().lower()
     if contract_context:
         return "ANSWERABLE", False, ""
@@ -90,16 +100,19 @@ async def classify_query_node(state: QAState) -> dict:
     if not query:
         return {"final_answer": "অনুগ্রহ করে আপনার আইনি প্রশ্নটি লিখুন।", "retrieved_docs": [], "citation_verified": False}
 
+    # ✅ FIX 1: যদি ইউজার আগের পাল্টা প্রশ্নের উত্তর দেয় (Infinite Loop fix), তবে সরাসরি সার্চে যাবে
     if state.get("force_answerable"):
         logger.info("[classify_query_node] Bypassing LLM router: User is answering previous clarification.")
         return {"final_answer": None, "query_type": "ANSWERABLE", "needs_case_law": True, "retrieved_docs": [], "citation_verified": False}
 
+    # ✅ FIX 2: যদি ইউজার সরাসরি কোনো নির্দিষ্ট ধারা/অনুচ্ছেদ জিজ্ঞেস করে, তবে রাউটার বাইপাস (স্পিড বাড়ানোর জন্য)
     if re.search(r"(section|article|ধারা|অনুচ্ছেদ)\s*\d+", query, re.IGNORECASE):
         logger.info("[classify_query_node] Bypassing LLM router (Explicit Section/Article detected).")
         return {"final_answer": None, "query_type": "ANSWERABLE", "needs_case_law": False, "retrieved_docs": [], "citation_verified": False}
         
     try:
         llm = get_llm()
+        # হিস্ট্রি ৪টি মেসেজেই সীমাবদ্ধ রাখা হলো (টোকেন বাঁচাতে)
         history_text = "\n".join(
             f"{getattr(m, 'type', 'message')}: {_content_text(getattr(m, 'content', ''))}" for m in history[-4:]
         )
@@ -148,7 +161,7 @@ async def retrieve_node(state: QAState) -> dict:
     # 1. Primary Statutory Retrieval (Qdrant)
     try:
         llm = get_llm()
-        # ✅ FIX: top_k=8 থেকে কমিয়ে top_k=5 করা হলো টোকেন লিমিট বাঁচাতে
+        # ✅ FIX: top_k=5 করা হলো টোকেন লিমিট (৮K TPM) বাঁচাতে
         results = await hybrid_retriever.aretrieve(query, history=history_messages, llm_instance=llm, top_k=5)
         for r in results:
             content_text = r.get("text") or r.get("content", "")
@@ -215,7 +228,7 @@ async def generate_answer_node(state: QAState) -> dict:
 
         if d.get("source_type") == "precedent":
             ref_url = d.get("reference_url", "") or d.get("metadata", {}).get("url", "")
-            # ✅ FIX: ওয়েব রেজাল্টের টেক্সট ৮০০ ক্যারেক্টারে কাটা হলো
+            # ✅ FIX: ওয়েব রেজাল্টের টেক্সট ৮০০ ক্যারেক্টারে কাটা হলো
             truncated_text = text[:800] + "...[TRUNCATED]" if len(text) > 800 else text
             precedent_blocks.append(
                 f"• [LIVE WEB RESULT]: {title}\n"
@@ -262,7 +275,7 @@ async def generate_answer_node(state: QAState) -> dict:
         llm = get_llm()
         messages = [SystemMessage(content=SYSTEM_QA_PROMPT)]
         if history_messages:
-            # ✅ FIX: হিস্ট্রি মেসেজ ৬টি থেকে কমিয়ে ৩টি করা হলো
+            # ✅ FIX: হিস্ট্রি মেসেজ ৩টি করা হলো
             messages.extend(history_messages[-3:])
         messages.append(HumanMessage(content=user_prompt))
 

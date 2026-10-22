@@ -88,7 +88,7 @@ def get_llm() -> BaseChatModel:
     if gemini_key:
         try:
             fallback_llm = ChatGoogleGenerativeAI(
-                model="gemini-flash-latest",
+                model="gemini-3.5-flash-lite",
                 google_api_key=gemini_key,
                 temperature=0.1,              # ✅ কমিয়ে 0.1 করা হলো
                 max_output_tokens=2500,        # ✅ সর্বোচ্চ 2500 টোকেন 

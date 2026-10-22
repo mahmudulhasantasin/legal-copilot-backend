@@ -59,23 +59,19 @@ def _parse_json_object(text: str) -> dict:
     return json.loads(text[start:end + 1])
 
 
-# ✅ নতুন ইউনিভার্সাল প্রম্পট: LLM-কে হুবহু নাম বলতে বাধ্য করা হয়নি
+# ✅ নতুন ডাইনামিক প্রম্পট: কোনো কী-ওয়ার্ড হার্ডকোড করা নেই, শুধু লজিক দেওয়া আছে
 ROUTER_PROMPT = """You are an expert Legal Query Reformulator for Bangladesh Law.
 Your core task is to analyze the user's query and extract the Act names and Section numbers.
 
 CRITICAL RULES FOR ACT EXTRACTION:
-1. Do NOT guess the full official title (like "The Penal Code, 1860"). Just extract the core English or Bengali keywords the user used.
-   - If user asks about Constitution/equality/fundamental rights -> return ["Constitution"]
-   - If user asks about Penal Code/murder/theft/crime -> return ["Penal Code"]
-   - If user asks about Labour Act/job/termination -> return ["Labour Act"]
-   - If user asks about Contract Act/agreement/breach -> return ["Contract Act"]
-   - If user asks about NI Act/cheque dishonor -> return ["Negotiable Instruments Act"]
-   - If user asks about CPC/civil suit -> return ["Code of Civil Procedure"]
-   - If user asks about CrPC/bail/FIR -> return ["Code of Criminal Procedure"]
-2. Only include `detected_acts` if the query clearly relates to a specific Law/Act. If unsure or if multiple unknown laws might apply, leave it empty `[]`.
-3. If the user specifies a section or article number (e.g., "২৭ নং অনুচ্ছেদ", "Section 138"), add it to `explicit_sections`.
-4. Only add `inferred_sections` when you are highly confident (e.g., "চেক ডিজঅনার" -> infer "138", "সমতার অধিকার" -> infer "27", "28").
-5. In `optimized_query`, write a rich semantic search string containing both English and Bengali legal terms to maximize vector search recall. Include the exact words the user used.
+1. Do NOT guess the full official title (like "The Penal Code, 1860"). Just extract the core English or Bengali keywords the user used (e.g., "Penal Code", "Labour Act", "Contract Act", "Constitution").
+2. MULTI-LAW DETECTION: If the user describes a scenario that involves multiple areas of law, you MUST extract ALL relevant Acts.
+   - Example: If a user says "I was fired without notice despite my contract saying otherwise", extract both ["Labour Act", "Contract Act"].
+3. Do NOT rely on a predefined list of keywords. Use your own legal reasoning to identify which Acts apply to the user's situation.
+4. Only include `detected_acts` if the query clearly relates to specific Laws/Acts. If unsure, leave it empty `[]`.
+5. If the user specifies a section or article number (e.g., "২৭ নং অনুচ্ছেদ", "Section 138"), add it to `explicit_sections`.
+6. Only add `inferred_sections` when you are highly confident (e.g., "চেক ডিজঅনার" -> infer "138", "সমতার অধিকার" -> infer "27", "28").
+7. In `optimized_query`, write a rich semantic search string containing both English and Bengali legal terms to maximize vector search recall. Include the exact words the user used.
 
 Respond ONLY with a strict JSON object:
 {
@@ -87,11 +83,14 @@ Respond ONLY with a strict JSON object:
 
 
 def _fallback(user_query: str, explicit: List[str]) -> AnalyzedQuery:
+    """
+    Fallback mechanism: If the LLM completely fails (e.g., API down),
+    we use basic keyword matching to extract the acts.
+    """
     detected_acts = []
     inferred_secs = []
     q_lower = user_query.lower()
     
-    # ✅ Fallback-এও নতুন কী-ওয়ার্ড যোগ করা হলো
     if any(k in q_lower for k in ("constitution", "সংবিধান", "মৌলিক অধিকার", "fundamental rights")):
         detected_acts.append("Constitution")
     if any(k in q_lower for k in ("contract", "চুক্তি", "vhong", "ভঙ্গ", "agreement")):
