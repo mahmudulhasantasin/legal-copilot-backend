@@ -31,7 +31,6 @@ SIGNUP_BONUS_CREDITS = 50
 OTP_EXPIRY_MINUTES = 5
 
 # ✅ BUG B FIX: backend LawyerStatus → frontend verification_status
-# (Matches frontend's LawyerVerificationStatus union in AuthContext.tsx)
 _LAWYER_STATUS_MAP = {
     "PENDING_VERIFICATION": "pending",
     "APPROVED": "verified",
@@ -113,7 +112,6 @@ class Token(BaseModel):
     credit_balance: int
     is_verified: bool
 
-# ✅ BUG B FIX: nested lawyer info (only populated for UserRole.LAWYER)
 class LawyerInfoResponse(BaseModel):
     bar_council_id: Optional[str] = None
     experience_years: Optional[int] = None
@@ -128,11 +126,12 @@ class UserResponse(BaseModel):
     role: UserRole
     subscription_tier: SubscriptionTier
     credit_balance: int
+    enterprise_credit_balance: Optional[int] = None # ✅ NEW: Company Pool Balance
     is_active: bool
     is_verified: bool
     enterprise_id: Optional[int] = None
     profile_photo_url: Optional[str] = None
-    lawyer_profile: Optional[LawyerInfoResponse] = None   # ✅ BUG B FIX
+    lawyer_profile: Optional[LawyerInfoResponse] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -192,7 +191,6 @@ async def _send_and_store_otp(db: AsyncSession, user: User, background_tasks: Ba
     user.otp_code = otp
     user.otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES)
     await db.commit()
-    
     background_tasks.add_task(send_otp_email, user.email, otp)
 
 
@@ -420,18 +418,15 @@ async def onboard_as_enterprise(payload: OnboardEnterpriseRequest, current_user:
     await db.refresh(enterprise)
     return {"status": "success", "message": "Enterprise registered. Awaiting system admin approval.", "referral_code": enterprise.referral_code, "enterprise_id": enterprise.id}
 
-# ✅ BUG B FIX: /me now includes lawyer_profile for UserRole.LAWYER
-# Manually construct the response to prevent Pydantic from lazy-loading 
-# the `lawyer_profile` relationship, which causes a MissingGreenlet 500 error.
+
 @router.get("/me", response_model=UserResponse)
 async def get_me(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Returns the authenticated user with nested lawyer_profile
-    (only for lawyers). Frontend reads `data.lawyer_profile.verification_status`
-    to unlock / lock the lawyer workspace.
+    Returns the authenticated user with nested lawyer_profile (for lawyers)
+    and enterprise_credit_balance (for enterprise admins/members).
     """
     response = UserResponse(
         id=current_user.id,
@@ -441,6 +436,7 @@ async def get_me(
         role=current_user.role,
         subscription_tier=current_user.subscription_tier,
         credit_balance=current_user.credit_balance,
+        enterprise_credit_balance=None, # Default
         is_active=current_user.is_active,
         is_verified=current_user.is_verified,
         enterprise_id=current_user.enterprise_id,
@@ -448,6 +444,15 @@ async def get_me(
         lawyer_profile=None
     )
 
+    # ✅ NEW: Fetch Company Pool Balance for Enterprise Roles
+    if current_user.role in (UserRole.ENTERPRISE_ADMIN, UserRole.ENTERPRISE_MEMBER) and current_user.enterprise_id:
+        enterprise = await db.scalar(
+            select(Enterprise).where(Enterprise.id == current_user.enterprise_id)
+        )
+        if enterprise:
+            response.enterprise_credit_balance = enterprise.credit_balance
+
+    # ✅ Fetch Lawyer Profile
     if current_user.role == UserRole.LAWYER:
         profile = await db.scalar(
             select(LawyerProfile).where(LawyerProfile.user_id == current_user.id)
@@ -462,16 +467,13 @@ async def get_me(
                 ),
             )
         else:
-            # Role=LAWYER but no profile row (shouldn't happen, but defensive)
             logger.warning(
                 f"[get_me] LAWYER role user {current_user.id} has no LawyerProfile row"
             )
 
     return response
 
-# ──────────────────────────────────────────────────────────
-# ACCOUNT DELETION (NEW)
-# ──────────────────────────────────────────────────────────
+
 @router.delete("/me")
 async def delete_my_account(
     db: AsyncSession = Depends(get_db),
@@ -479,31 +481,23 @@ async def delete_my_account(
 ):
     """
     Soft deletes the current user's account and anonymizes their PII data.
-    This ensures historical records (payments, audits) remain intact for accounting purposes.
     """
     if current_user.is_deleted:
         raise HTTPException(400, "Account is already deleted.")
 
-    # ১. ইউজারকে ডিলিট/ইনঅ্যাক্টিভ মার্ক করা
     current_user.is_deleted = True
     current_user.is_active = False
-    
-    # ২. ব্যক্তিগত তথ্য (PII) সম্পূর্ণ রিমুভ বা অ্যানোনিমাইজ করা
     current_user.full_name = "Deleted User"
-    current_user.email = f"deleted_{current_user.id}_{current_user.email}" # ইমেইল ফ্রি করে দেওয়া হলো
+    current_user.email = f"deleted_{current_user.id}_{current_user.email}"
     current_user.phone = None
     current_user.profile_photo_url = None
-    current_user.hashed_password = "DELETED_ACCOUNT" # যাতে কেউ লগইন করতে না পারে
-    
-    # ৩. OTP ডাটা ক্লিয়ার করা
+    current_user.hashed_password = "DELETED_ACCOUNT"
     current_user.otp_code = None
     current_user.otp_expires_at = None
 
-    # ৪. এন্টারপ্রাইজ মেম্বার হলে কোটা রিলিজ করা (যদি প্রযোজ্য হয়)
     if current_user.member_credit_quota:
         current_user.member_credit_quota = 0
         current_user.member_credit_used = 0
 
     await db.commit()
-
     return {"status": "success", "message": "Your account and personal data have been permanently deleted."}
