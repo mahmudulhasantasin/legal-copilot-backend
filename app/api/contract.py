@@ -217,7 +217,8 @@ async def upload_and_audit(
         original_filename=file.filename,
         file_path=storage_path,
         file_size_mb=round(len(file_bytes) / (1024 * 1024), 2),
-        file_mime_type=file.content_type
+        file_mime_type=file.content_type,
+        is_workspace_shared=True # ✅ Auto-share to company (Enterprise use case)
     )
     db.add(contract)
     await db.flush()
@@ -264,7 +265,7 @@ async def request_lawyer_verification(
         .where(
             Contract.id == contract_id,
             Contract.user_id == current_user.id,
-            Contract.deleted_at == None # ✅ ডিলিট হওয়া চুক্তি ভেরিফাই করা যাবে না
+            Contract.deleted_at == None
         )
     )
     if not memo:
@@ -329,7 +330,6 @@ async def get_my_contracts(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # ✅ FIX: deleted_at == None যুক্ত করা হলো, যাতে ডিলিট হওয়া চুক্তি এখানে না আসে
     stmt = select(Contract, ContractMemo).join(ContractMemo).where(
         Contract.user_id == current_user.id,
         Contract.deleted_at == None
@@ -341,7 +341,7 @@ async def get_my_contracts(
                 Contract.user_id == current_user.id,
                 Contract.enterprise_id == current_user.enterprise_id
             ),
-            Contract.deleted_at == None # ✅ এখানেও যোগ করা হলো
+            Contract.deleted_at == None
         )
         
     stmt = stmt.order_by(desc(Contract.created_at)).limit(limit).offset(offset)
@@ -355,13 +355,13 @@ async def get_my_contracts(
             "overall_risk": m.overall_risk.value,
             "risk_score": m.risk_score,
             "hitl_status": m.hitl_status.value,
-            "created_at": c.created_at
+            "created_at": c.created_at,
+            "is_workspace_shared": c.is_workspace_shared # ✅ Returns True for enterprise audits
         }
         for c, m in rows
     ]
 
 
-# ✅ নতুন এন্ডপয়েন্ট: চুক্তি ডিলিট করা (Soft Delete)
 @router.delete("/{contract_id}")
 async def delete_contract(
     contract_id: int,
@@ -381,7 +381,6 @@ async def delete_contract(
     if not contract:
         raise HTTPException(404, "Contract not found or already deleted.")
     
-    # Soft delete by setting deleted_at timestamp
     contract.deleted_at = datetime.now(timezone.utc)
     await db.commit()
     
@@ -394,14 +393,13 @@ async def get_download_url(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Generates a 1-hour signed URL for the original OR lawyer-verified contract."""
     result = await db.execute(
         select(Contract, ContractMemo)
         .outerjoin(ContractMemo, Contract.id == ContractMemo.contract_id)
         .where(
             Contract.id == contract_id,
             Contract.user_id == current_user.id,
-            Contract.deleted_at == None # ✅ ডিলিট হওয়া চুক্তি ডাউনলোড করা যাবে না
+            Contract.deleted_at == None
         )
     )
     row = result.first()

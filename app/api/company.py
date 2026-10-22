@@ -644,7 +644,6 @@ async def upload_company_playbook(
 ):
     """Uploads policy doc, parses into rules via LLM."""
     file_bytes = await file.read()
-    # ✅ FIX: Order is filename, then bytes
     raw_text = await extract_text_from_file(file.filename, file_bytes)
 
     if not raw_text.strip():
@@ -891,14 +890,17 @@ async def get_shared_contracts(
     ent: Enterprise = Depends(get_admin_enterprise),
     db: AsyncSession = Depends(get_db),
 ):
-    """Contracts shared by members to the company vault."""
+    """
+    Fetch ALL contracts audited by members of this enterprise.
+    (No longer filtering by is_workspace_shared since all member audits are visible to admin).
+    """
     stmt = (
         select(Contract, ContractMemo, User)
         .join(ContractMemo, Contract.id == ContractMemo.contract_id)
         .join(User, Contract.user_id == User.id)
         .where(
             Contract.enterprise_id == ent.id,
-            Contract.is_workspace_shared == True,
+            # Contract.is_workspace_shared == True,  <-- REMOVED
             Contract.deleted_at == None,
         )
         .order_by(desc(Contract.created_at))
