@@ -848,3 +848,74 @@ async def member_usage_analytics(
         }
         for r in rows
     ]
+
+# ──────────────────────────────────────────────────────────
+# AUDIT LOGS & SHARED CONTRACTS (NEW)
+# ──────────────────────────────────────────────────────────
+
+@router.get("/audit-logs")
+async def get_company_audit_logs(
+    limit: int = 20,
+    ent: Enterprise = Depends(get_admin_enterprise),
+    db: AsyncSession = Depends(get_db),
+):
+    """Enterprise Admin der jonno privacy-safe audit log."""
+    stmt = (
+        select(CreditTransaction, User)
+        .join(User, CreditTransaction.user_id == User.id)
+        .where(
+            CreditTransaction.enterprise_id == ent.id,
+            CreditTransaction.amount < 0, # Only spends
+        )
+        .order_by(desc(CreditTransaction.created_at))
+        .limit(limit)
+    )
+    rows = (await db.execute(stmt)).all()
+
+    return [
+        {
+            "id": tx.id,
+            "timestamp": tx.created_at.isoformat() if tx.created_at else None,
+            "member_name": user.full_name,
+            "department": user.department or "Operations",
+            "module": tx.tx_type.value.replace("_", " ").title(),
+            "category": tx.description or "Enterprise Usage",
+            "credits_consumed": abs(tx.amount),
+        }
+        for tx, user in rows
+    ]
+
+
+@router.get("/shared-contracts")
+async def get_shared_contracts(
+    ent: Enterprise = Depends(get_admin_enterprise),
+    db: AsyncSession = Depends(get_db),
+):
+    """Contracts shared by members to the company vault."""
+    stmt = (
+        select(Contract, ContractMemo, User)
+        .join(ContractMemo, Contract.id == ContractMemo.contract_id)
+        .join(User, Contract.user_id == User.id)
+        .where(
+            Contract.enterprise_id == ent.id,
+            Contract.is_workspace_shared == True,
+            Contract.deleted_at == None,
+        )
+        .order_by(desc(Contract.created_at))
+    )
+    rows = (await db.execute(stmt)).all()
+
+    return [
+        {
+            "id": c.id,
+            "contract_id": c.id,
+            "title": c.title,
+            "category": m.clauses_analysis[0].get("clause_title", "General") if m.clauses_analysis else "General",
+            "submitted_by": u.full_name,
+            "submitted_at": c.created_at.isoformat() if c.created_at else None,
+            "risk_score": m.risk_score,
+            "status": "approved" if m.hitl_status.value == "COMPLETED" else "pending",
+            "advocate_verified": m.hitl_status.value == "COMPLETED",
+        }
+        for c, m, u in rows
+    ]
