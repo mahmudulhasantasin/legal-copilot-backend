@@ -18,7 +18,6 @@ NO_CONTEXT_ANSWER = (
     "অনুগ্রহ করে আপনার পরিস্থিতি বা ঘটনাটি আরও সুনির্দিষ্টভাবে লিখুন।"
 )
 
-# ✅ আপডেটেড রাউটার প্রম্পট
 QUERY_ROUTER_PROMPT = """
 You are the intelligent query router for Advotech Copilot, a Bangladesh-law assistant.
 Classify the CURRENT request as exactly one of:
@@ -91,12 +90,10 @@ async def classify_query_node(state: QAState) -> dict:
     if not query:
         return {"final_answer": "অনুগ্রহ করে আপনার আইনি প্রশ্নটি লিখুন।", "retrieved_docs": [], "citation_verified": False}
 
-    # ✅ FIX 1: যদি ইউজার আগের পাল্টা প্রশ্নের উত্তর দেয়, তবে LLM রাউটার বাইপাস করে সরাসরি সার্চে যাবে
     if state.get("force_answerable"):
         logger.info("[classify_query_node] Bypassing LLM router: User is answering previous clarification.")
         return {"final_answer": None, "query_type": "ANSWERABLE", "needs_case_law": True, "retrieved_docs": [], "citation_verified": False}
 
-    # ✅ FIX 2: যদি ইউজার সরাসরি কোনো ধারা/অনুচ্ছেদ জিজ্ঞেস করে, তবে রাউটার বাইপাস
     if re.search(r"(section|article|ধারা|অনুচ্ছেদ)\s*\d+", query, re.IGNORECASE):
         logger.info("[classify_query_node] Bypassing LLM router (Explicit Section/Article detected).")
         return {"final_answer": None, "query_type": "ANSWERABLE", "needs_case_law": False, "retrieved_docs": [], "citation_verified": False}
@@ -104,7 +101,7 @@ async def classify_query_node(state: QAState) -> dict:
     try:
         llm = get_llm()
         history_text = "\n".join(
-            f"{getattr(m, 'type', 'message')}: {_content_text(getattr(m, 'content', ''))}" for m in history[-6:]
+            f"{getattr(m, 'type', 'message')}: {_content_text(getattr(m, 'content', ''))}" for m in history[-4:]
         )
         prompt = (
             f"Contract context available: {'yes' if contract_context else 'no'}\n"
@@ -151,7 +148,8 @@ async def retrieve_node(state: QAState) -> dict:
     # 1. Primary Statutory Retrieval (Qdrant)
     try:
         llm = get_llm()
-        results = await hybrid_retriever.aretrieve(query, history=history_messages, llm_instance=llm, top_k=8)
+        # ✅ FIX: top_k=8 থেকে কমিয়ে top_k=5 করা হলো টোকেন লিমিট বাঁচাতে
+        results = await hybrid_retriever.aretrieve(query, history=history_messages, llm_instance=llm, top_k=5)
         for r in results:
             content_text = r.get("text") or r.get("content", "")
             if content_text and content_text.strip():
@@ -169,11 +167,11 @@ async def retrieve_node(state: QAState) -> dict:
     except Exception as e:
         logger.exception(f"[retrieve_node] Hybrid Retriever fetch error: {e}")
 
-    # 2. Live Precedent Search (MCP) - only if router flagged it
+    # 2. Live Precedent Search (MCP)
     if needs_case_law:
         try:
             logger.info(f"[retrieve_node] Triggering MCP live case law search for: {query}")
-            live_results = await search_live_bd_judgements(query=query, max_results=3)
+            live_results = await search_live_bd_judgements(query=query, max_results=2)
             
             for hit in live_results:
                 snippet = hit.get("snippet", "").strip()
@@ -217,16 +215,21 @@ async def generate_answer_node(state: QAState) -> dict:
 
         if d.get("source_type") == "precedent":
             ref_url = d.get("reference_url", "") or d.get("metadata", {}).get("url", "")
+            # ✅ FIX: ওয়েব রেজাল্টের টেক্সট ৮০০ ক্যারেক্টারে কাটা হলো
+            truncated_text = text[:800] + "...[TRUNCATED]" if len(text) > 800 else text
             precedent_blocks.append(
                 f"• [LIVE WEB RESULT]: {title}\n"
-                f"  Snippet: {text}\n"
+                f"  Snippet: {truncated_text}\n"
                 f"  Source URL: {ref_url}"
             )
         else:
             header_info = f"{act} | Section: {sec}".strip(" |")
             if title:
                 header_info += f" ({title})"
-            statutory_blocks.append(f"=== STATUTE: {header_info} ===\n{text}")
+            
+            # ✅ FIX: স্ট্যাটিউটরি ডকুমেন্টের টেক্সট ১৫০০ ক্যারেক্টারে কাটা হলো (Groq-এর ৮K TPM লিমিট বাঁচাতে)
+            truncated_text = text[:1500] + "...[TRUNCATED]" if len(text) > 1500 else text
+            statutory_blocks.append(f"=== STATUTE: {header_info} ===\n{truncated_text}")
 
     # কনটেক্সট না থাকলে
     if not statutory_blocks and not precedent_blocks and not contract_context:
@@ -259,7 +262,8 @@ async def generate_answer_node(state: QAState) -> dict:
         llm = get_llm()
         messages = [SystemMessage(content=SYSTEM_QA_PROMPT)]
         if history_messages:
-            messages.extend(history_messages[-6:])
+            # ✅ FIX: হিস্ট্রি মেসেজ ৬টি থেকে কমিয়ে ৩টি করা হলো
+            messages.extend(history_messages[-3:])
         messages.append(HumanMessage(content=user_prompt))
 
         response = await llm.ainvoke(messages)

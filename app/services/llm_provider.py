@@ -71,13 +71,13 @@ def get_llm() -> BaseChatModel:
     if groq_key:
         try:
             primary_llm = ChatGroq(
-                model="mixtral-8x7b-32768",  # ✅ নতুন সাপোর্টেড মডেল
+                model="qwen/qwen3.6-27b",  # ✅ নতুন রিকমেন্ডেড মডেল
                 api_key=groq_key,
-                temperature=0.1,              # ✅ কমিয়ে 0.1 করা হলো (লুপ এড়াতে)
-                max_tokens=2500,               # ✅ সর্বোচ্চ 2500 টোকেন (Infinite Loop বন্ধ)
+                temperature=0.1,
+                max_tokens=1800, # ✅ খুব গুরুত্বপূর্ণ!
                 max_retries=1,
                 timeout=60.0
-            )
+            )   
             logger.info("Groq primary LLM initialized successfully.")
         except Exception as exc:
             logger.warning(f"Failed to initialize Groq: {exc}")
