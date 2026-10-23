@@ -180,6 +180,7 @@ def route_after_classification(state: QAState) -> str:
     return "stop" if state.get("final_answer") else "retrieve"
 
 
+# ✅ UPDATED: retrieve_node with robust parsing and debug logging
 async def retrieve_node(state: QAState) -> dict:
     """Qdrant থেকে আইনের ধারা আনে। MCP দিয়ে লাইভ ওয়েব সার্চ হয় যদি needs_case_law True হয়।"""
     query = state.get("query", "")
@@ -220,34 +221,50 @@ async def retrieve_node(state: QAState) -> dict:
                 arguments={"query": query, "max_results": 2}
             )
             
-            # Extracting the actual results from the MCP response content
-            # The tool returns a list of dicts, so we handle the structure
             live_results = []
             if "content" in mcp_response:
-                # MCP returns content as a list of TextContent-like dicts
                 for item in mcp_response["content"]:
                     if isinstance(item, dict) and item.get("type") == "text":
+                        raw_text = item.get("text", "")
+                        # ✅ DEBUG: Render লগে দেখো MCP আসলে কী পাঠাচ্ছে
+                        logger.info(f"[MCP RAW RESPONSE]: {raw_text[:500]}...")
+                        
                         try:
-                            parsed_res = json.loads(item.get("text", "[]"))
+                            parsed_res = json.loads(raw_text)
+                            # যদি list হয় (যেমন: [{...}, {...}])
                             if isinstance(parsed_res, list):
                                 live_results.extend(parsed_res)
+                            # যদি dict হয় এবং তার ভেতর list থাকে (যেমন: {"results": [...]} )
+                            elif isinstance(parsed_res, dict):
+                                if "results" in parsed_res and isinstance(parsed_res["results"], list):
+                                    live_results.extend(parsed_res["results"])
+                                elif "valid" in parsed_res or "title" in parsed_res:
+                                    live_results.append(parsed_res)
                         except json.JSONDecodeError:
-                            pass
+                            # যদি JSON না হয়, তবে টেক্সট হিসেবেই রাখি
+                            if raw_text.strip():
+                                live_results.append({
+                                    "snippet": raw_text,
+                                    "title": "Live Web Search Result",
+                                    "reference_url": "MCP Tool"
+                                })
+
+            logger.info(f"[retrieve_node] Found {len(live_results)} live web results from MCP.")
 
             for hit in live_results:
-                snippet = hit.get("snippet", "").strip()
+                snippet = hit.get("snippet", hit.get("content", "")).strip() if isinstance(hit, dict) else str(hit)
                 if snippet:
                     context_docs.append({
-                        "id": hit.get("reference_url", "live_search"),
-                        "act": hit.get("source", "Supreme Court / Legal News"),
-                        "section": hit.get("title", "Case Precedent"),
-                        "title": hit.get("title", ""),
-                        "content": f"{snippet}\nReference Source: {hit.get('reference_url')}",
+                        "id": hit.get("reference_url", "live_search") if isinstance(hit, dict) else "live_search",
+                        "act": hit.get("source", "Supreme Court / Legal News") if isinstance(hit, dict) else "Supreme Court",
+                        "section": hit.get("title", "Case Precedent") if isinstance(hit, dict) else "Live Result",
+                        "title": hit.get("title", "") if isinstance(hit, dict) else "",
+                        "content": f"{snippet}\nReference Source: {hit.get('reference_url', '') if isinstance(hit, dict) else ''}",
                         "source_type": "precedent",
-                        "reference_url": hit.get("reference_url", ""),
+                        "reference_url": hit.get("reference_url", "") if isinstance(hit, dict) else "",
                         "metadata": {
-                            "url": hit.get("reference_url"),
-                            "tier": hit.get("tier", 2) 
+                            "url": hit.get("reference_url") if isinstance(hit, dict) else "",
+                            "tier": hit.get("tier", 2) if isinstance(hit, dict) else 2
                         },
                     })
         except Exception as e:
