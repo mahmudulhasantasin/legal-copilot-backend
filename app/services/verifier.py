@@ -1,7 +1,53 @@
 import re
+import httpx
+import json
+import logging
 from typing import Dict, Any, List
 
+logger = logging.getLogger(__name__)
 BN_TO_EN_DIGITS = str.maketrans("০১২৩৪৫৬৭৮৯", "0123456789")
+
+
+# ✅ NEW: Remote MCP Verify Helper
+async def _call_remote_verify_mcp(act_name: str, section_num: str) -> bool:
+    """
+    Calls the standalone MCP server on Render to verify a specific statute section.
+    """
+    MCP_URL = "https://bd-legal-mcp-server.onrender.com/mcp"
+    
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": "verify_legal_citation",
+            "arguments": {"statute_act": act_name, "cited_section": section_num}
+        },
+        "id": 1
+    }
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream"
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(MCP_URL, json=payload, headers=headers, timeout=60.0)
+            response.raise_for_status()
+            
+            # Parse SSE (Server-Sent Events) response
+            for line in response.text.splitlines():
+                if line.startswith("data: "):
+                    data = json.loads(line[6:])
+                    # Extract JSON from MCP content block
+                    result_text = data.get("result", {}).get("content", [{}])[0].get("text", "{}")
+                    parsed_result = json.loads(result_text)
+                    return parsed_result.get("valid", False)
+                    
+    except Exception as e:
+        logger.error(f"[MCP Verify] Failed for {act_name} Section {section_num}: {e}")
+        
+    return False
 
 
 class CitationVerifier:
@@ -49,10 +95,11 @@ class CitationVerifier:
 
         return {"citation_verified": all_matched, "citations": verified_citations}
 
-    def verify_structured_response(self, parsed_json: dict, retrieved_docs: List[dict]) -> dict:
+    # ✅ FIX: Made async to call the remote MCP server
+    async def verify_structured_response(self, parsed_json: dict, retrieved_docs: List[dict]) -> dict:
         """
-        [NEW STRICT VERIFIER] Verifies the LLM's JSON output against retrieved docs.
-        Checks if the cited sections and case laws actually exist in the Qdrant/MCP context.
+        [NEW STRICT VERIFIER] Verifies the LLM's JSON output against the remote MCP server.
+        Checks if the cited sections actually exist in the Bangladesh Legal Qdrant Database.
         """
         if not parsed_json:
             return {"all_valid": False, "verified_sections": [], "verified_cases": []}
@@ -60,57 +107,41 @@ class CitationVerifier:
         cited_sections = parsed_json.get("cited_sections", []) or []
         cited_cases = parsed_json.get("cited_cases", []) or []
 
-        # 1. Prepare Context Strings from retrieved docs
-        statute_context = ""
+        # 1. Prepare Context Strings from retrieved docs (For Case Law fallback)
         precedent_context = ""
-
         for doc in retrieved_docs:
-            text = doc.get("text") or doc.get("content") or ""
-            text = str(text).translate(BN_TO_EN_DIGITS).lower()
-
             if doc.get("source_type") == "precedent":
                 title = str(doc.get("title", "")).lower()
+                text = str(doc.get("content", "")).lower()
                 precedent_context += f" {title} {text} "
-            else:
-                act = str(doc.get("act", "")).lower()
-                sec = str(doc.get("section", "")).translate(BN_TO_EN_DIGITS).lower()
-                statute_context += f" {act} {sec} {text} "
 
         verified_sections = []
         all_sections_valid = True
 
-        # 2. Verify Statutory Sections
+        # 2. Verify Statutory Sections via MCP
         for sec in cited_sections:
-            act_name = str(sec.get("act", "")).translate(BN_TO_EN_DIGITS).lower()
-            sec_num = str(sec.get("section", "")).translate(BN_TO_EN_DIGITS).lower()
-
-            # Clean up the section number (remove 'section', 'sec', 'ধারা', brackets etc.)
-            sec_num_clean = re.sub(r'(section|sec\.?|ধারা|[\{\}\[\]\(\)])', '', sec_num).strip()
+            act_name = str(sec.get("act", ""))
+            sec_num = str(sec.get("section", ""))
+            
+            # Clean up section number just in case LLM outputs "Section 73" instead of "73"
+            sec_num_clean = re.sub(r'(section|sec\.?|ধারা|[\{\}\[\]\(\)])', '', sec_num, flags=re.IGNORECASE).strip()
 
             if not sec_num_clean:
                 continue
 
-            # Check if the section number exists in the statute context as a whole word
-            # \b is used to prevent matching "7" when the context has "73"
-            is_valid = bool(re.search(rf"\b{re.escape(sec_num_clean)}\b", statute_context))
-            
-            # Edge case: If act name is provided, ensure it roughly matches the context
-            if is_valid and act_name and len(act_name) > 5:
-                # Just check if the first 5 chars of the act name exist to avoid mismatches like "Penal Code" vs "Contract Act"
-                act_prefix = act_name[:5]
-                if act_prefix not in statute_context:
-                    is_valid = False
+            # ✅ Call Remote MCP Server for 100% accurate verification
+            is_valid = await _call_remote_verify_mcp(act_name, sec_num_clean)
 
             verified_sections.append({
                 "act": sec.get("act"),
                 "section": sec.get("section"),
                 "valid": is_valid,
-                "status": "Verified" if is_valid else "Unverified (Hallucination suspected)"
+                "status": "Verified via MCP" if is_valid else "Unverified (Hallucination suspected)"
             })
             if not is_valid:
                 all_sections_valid = False
 
-        # 3. Verify Case Laws
+        # 3. Verify Case Laws (Substring match against fetched web results)
         verified_cases = []
         all_cases_valid = True
 
@@ -120,8 +151,6 @@ class CitationVerifier:
             if not case_name or len(case_name) < 5:
                 continue
 
-            # Case names are usually unique enough for a substring match.
-            # e.g., "Abdul Kadir vs State"
             is_valid = case_name in precedent_context
 
             verified_cases.append({

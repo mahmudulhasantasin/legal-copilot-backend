@@ -2,8 +2,13 @@ import json
 import re
 from typing import List, Dict, Any
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_google_genai import ChatGoogleGenerativeAI
-from app.config import settings
+
+# ✅ FIX 1: Remove direct ChatGoogleGenerativeAI and settings import
+# from langchain_google_genai import ChatGoogleGenerativeAI
+# from app.config import settings
+
+# ✅ FIX 2: Import centralized LLM provider
+from app.services.llm_provider import get_llm
 from app.services.ingestion import doc_processor, extract_text_from_file
 
 
@@ -20,22 +25,21 @@ async def extract_playbook_text(filename: str, content: bytes) -> str:
     """
     Reuses ingestion.py logic to parse text from digital/scanned PDFs, DOCX, and text files.
     """
-    raw_text = extract_text_from_file(filename=filename, content=content)
+    # ✅ FIX 3: Added missing await (resolves AttributeError: 'coroutine' object has no attribute 'strip')
+    raw_text = await extract_text_from_file(filename=filename, content=content)
     return raw_text.strip()
 
 
 async def parse_playbook_to_rules(raw_text: str) -> List[Dict[str, Any]]:
     """
-    Transforms raw policy text into structured compliance rules using Gemini LLM.
+    Transforms raw policy text into structured compliance rules using centralized LLM.
     """
     if not raw_text:
         return []
 
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
-        google_api_key=settings.GEMINI_API_KEY,
-        temperature=0.0
-    )
+    # ✅ FIX 4: Use get_llm() factory instead of hardcoding Gemini 
+    # (Ensures Groq primary -> Gemini fallback works)
+    llm = get_llm()
 
     prompt = ChatPromptTemplate.from_messages([
         (

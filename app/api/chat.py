@@ -73,7 +73,8 @@ class ChatResponse(BaseModel):
 # HELPERS
 # ──────────────────────────────────────────────────────────
 
-def _format_agent_output(structured_response: dict, raw_answer: str, retrieved_docs: list) -> StructuredLegalResponse:
+# ✅ FIX: Made async to support the new MCP-based verifier
+async def _format_agent_output(structured_response: dict, raw_answer: str, retrieved_docs: list) -> StructuredLegalResponse:
     """
     Takes the LLM's JSON output, strictly verifies citations against retrieved docs,
     and returns a safe StructuredLegalResponse.
@@ -94,7 +95,8 @@ def _format_agent_output(structured_response: dict, raw_answer: str, retrieved_d
     raw_cases = structured_response.get("cited_cases", [])
 
     # 1. STRICT VERIFICATION: Cross-check with retrieved context
-    verification = verifier.verify_structured_response(structured_response, retrieved_docs)
+    # ✅ FIX: Added await
+    verification = await verifier.verify_structured_response(structured_response, retrieved_docs)
     
     # 2. Filter Sections
     final_sections = []
@@ -430,7 +432,8 @@ DETAILED CLAUSES ANALYSIS:
     retrieved_docs = graph_output.get("retrieved_docs") or []
     structured_response_json = graph_output.get("structured_response")
     
-    structured_res = _format_agent_output(
+    # ✅ FIX: Added await
+    structured_res = await _format_agent_output(
         structured_response_json, 
         raw_answer, 
         retrieved_docs

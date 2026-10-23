@@ -1,6 +1,7 @@
 import logging
 import json
 import re
+import httpx
 from typing import Dict, Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
@@ -8,7 +9,6 @@ from langgraph.graph import END, StateGraph
 from app.agents.prompts import SYSTEM_QA_PROMPT
 from app.agents.state import QAState
 from app.services.llm_provider import get_llm
-from app.services.mcp_server import search_live_bd_judgements
 from app.services.retriever import hybrid_retriever
 
 logger = logging.getLogger(__name__)
@@ -90,6 +90,50 @@ def _fallback_route(query, contract_context):
         return "NEEDS_CLARIFICATION", False, "অনুগ্রহ করে আপনার পরিস্থিতি বা আইনি সমস্যাটি আরও বিস্তারিতভাবে লিখুন, যাতে আমি সঠিক আইন ও ধারা বলতে পারি।"
         
     return "ANSWERABLE", True, ""
+
+
+# ✅ NEW: Helper function to call the Remote MCP Server deployed on Render
+async def call_remote_mcp_tool(tool_name: str, arguments: dict) -> dict:
+    """
+    Sends a JSON-RPC request to the standalone MCP server on Render.
+    """
+    MCP_URL = "https://bd-legal-mcp-server.onrender.com/mcp"
+    
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": tool_name,
+            "arguments": arguments
+        },
+        "id": 1
+    }
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream"
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            # Render free tier wake-up timeout handled (60s)
+            response = await client.post(MCP_URL, json=payload, headers=headers, timeout=60.0)
+            response.raise_for_status()
+            
+            # Parse Server-Sent Events (SSE) response if the server uses it
+            for line in response.text.splitlines():
+                if line.startswith("data: "):
+                    data = json.loads(line[6:])
+                    if "result" in data:
+                        return data["result"]
+                elif line.startswith("{"): # Fallback if it returns raw JSON
+                    data = json.loads(line)
+                    if "result" in data:
+                        return data["result"]
+            return {}
+        except Exception as e:
+            logger.error(f"[call_remote_mcp_tool] Remote MCP Call Failed: {e}")
+            return {}
 
 
 async def classify_query_node(state: QAState) -> dict:
@@ -180,12 +224,31 @@ async def retrieve_node(state: QAState) -> dict:
     except Exception as e:
         logger.exception(f"[retrieve_node] Hybrid Retriever fetch error: {e}")
 
-    # 2. Live Precedent Search (MCP)
+    # 2. Live Precedent Search (MCP via Remote Server)
     if needs_case_law:
         try:
-            logger.info(f"[retrieve_node] Triggering MCP live case law search for: {query}")
-            live_results = await search_live_bd_judgements(query=query, max_results=2)
+            logger.info(f"[retrieve_node] Triggering Remote MCP live case law search for: {query}")
             
+            # ✅ FIX: Calling the Render MCP server instead of local function
+            mcp_response = await call_remote_mcp_tool(
+                tool_name="search_live_bd_judgements", 
+                arguments={"query": query, "max_results": 2}
+            )
+            
+            # Extracting the actual results from the JSON-RPC response content
+            # The tool returns a list of dicts, so we handle the structure
+            live_results = []
+            if "content" in mcp_response:
+                # MCP returns content as a list of TextContent objects
+                for item in mcp_response["content"]:
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        try:
+                            parsed_res = json.loads(item.get("text", "[]"))
+                            if isinstance(parsed_res, list):
+                                live_results.extend(parsed_res)
+                        except json.JSONDecodeError:
+                            pass
+
             for hit in live_results:
                 snippet = hit.get("snippet", "").strip()
                 if snippet:
@@ -203,7 +266,7 @@ async def retrieve_node(state: QAState) -> dict:
                         },
                     })
         except Exception as e:
-            logger.exception(f"[retrieve_node] MCP live judgment error: {e}")
+            logger.exception(f"[retrieve_node] Remote MCP live judgment error: {e}")
     else:
         logger.info("[retrieve_node] Skipped MCP web search.")
 

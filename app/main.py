@@ -1,8 +1,10 @@
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # ⚠️ CRITICAL: Import all models FIRST so SQLAlchemy resolves all relationships
 import app.models  # noqa: F401
@@ -18,6 +20,10 @@ from app.api import (
     contract,
     settings,
 )
+
+# ── Import Database & Services ──
+from app.core.database import get_db
+from app.services.vector_store import vector_manager
 
 # ── Import Cron Scheduler ──
 from app.services.cron import start_scheduler, shutdown_scheduler
@@ -74,11 +80,10 @@ app.add_middleware(
         "http://localhost:3000",     
         "http://localhost:5173",     
         "http://localhost:3001",     
-        "https://advotech-copilot.vercel.app",  # ✅ স্পেসিফিক লিংক (স্ল্যাশ ছাড়া)
-        "https://outliers-omega.vercel.app"     # ✅ স্পেসিফিক লিংক (স্ল্যাশ ছাড়া)
+        "https://advotech-copilot.vercel.app",  # ✅ স্পেসিফিক লিংক
+        "https://outliers-omega.vercel.app"     # ✅ স্পেসিফিক লিংক
     ],
-    # ✅ এই ম্যাজিক লাইনটি vercel.app-এর যেকোনো সাবডোমেইনকে অনুমতি দেবে
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    # ✅ FIX: allow_origin_regex রিমুভ করা হলো (যাতে যেকোনো ভের্সেল অ্যাপ এক্সেস না পায়)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -127,15 +132,42 @@ async def root():
     }
 
 @app.get("/health", tags=["System"])
-async def health_check():
+async def health_check(db: AsyncSession = Depends(get_db)):
     """
-    Basic health check. 
-    In a full production setup, this should also ping the DB and Qdrant.
+    ✅ FIX: Real-time health check.
+    Pings the PostgreSQL database and Qdrant Cloud to verify connectivity.
     """
-    return JSONResponse(
-        status_code=200,
-        content={
-            "status": "healthy",
-            "service": "ContractMind API"
+    health_status = {
+        "status": "healthy",
+        "service": "ContractMind API",
+        "components": {
+            "database": "unknown",
+            "qdrant": "unknown"
         }
-    )
+    }
+    
+    is_healthy = True
+
+    # 1. Check PostgreSQL Database
+    try:
+        await db.execute(text("SELECT 1"))
+        health_status["components"]["database"] = "connected"
+    except Exception as e:
+        logger.error(f"[HealthCheck] DB connection failed: {e}")
+        health_status["components"]["database"] = "error"
+        is_healthy = False
+
+    # 2. Check Qdrant Vector Database
+    try:
+        vector_manager.client.get_collection(vector_manager.collection_name)
+        health_status["components"]["qdrant"] = "connected"
+    except Exception as e:
+        logger.error(f"[HealthCheck] Qdrant connection failed: {e}")
+        health_status["components"]["qdrant"] = "error"
+        is_healthy = False
+
+    # 3. Update Overall Status
+    if not is_healthy:
+        health_status["status"] = "degraded"
+
+    return JSONResponse(status_code=200, content=health_status)
