@@ -1,6 +1,7 @@
 import logging
 import json
 import re
+import asyncio
 from typing import Dict, Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
@@ -13,6 +14,8 @@ from app.agents.prompts import SYSTEM_QA_PROMPT
 from app.agents.state import QAState
 from app.services.llm_provider import get_llm
 from app.services.retriever import hybrid_retriever
+# ✅ NEW: Import query analyzer for MCP search optimization
+from app.services.query_analyzer import analyze_query_dynamically
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +183,7 @@ def route_after_classification(state: QAState) -> str:
     return "stop" if state.get("final_answer") else "retrieve"
 
 
-# ✅ UPDATED: retrieve_node with robust parsing and debug logging
+# ✅ UPDATED: retrieve_node with robust parsing, debug logging, and optimized query for MCP
 async def retrieve_node(state: QAState) -> dict:
     """Qdrant থেকে আইনের ধারা আনে। MCP দিয়ে লাইভ ওয়েব সার্চ হয় যদি needs_case_law True হয়।"""
     query = state.get("query", "")
@@ -215,10 +218,18 @@ async def retrieve_node(state: QAState) -> dict:
         try:
             logger.info(f"[retrieve_node] Triggering Remote MCP live case law search for: {query}")
             
-            # ✅ Calling the Render MCP server via official MCP Client
+            # ✅ FIX: Optimize query for MCP using the existing query_analyzer
+            llm = get_llm()
+            # Run analyzer in thread to avoid blocking async loop
+            analysis = await asyncio.to_thread(analyze_query_dynamically, query, history_messages, llm)
+            mcp_search_query = analysis.optimized_query or query
+            
+            logger.info(f"[retrieve_node] Optimized MCP Query: {mcp_search_query}")
+            
+            # ✅ Calling the Render MCP server with the OPTIMIZED query
             mcp_response = await call_remote_mcp_tool(
                 tool_name="search_live_bd_judgements", 
-                arguments={"query": query, "max_results": 2}
+                arguments={"query": mcp_search_query, "max_results": 2}
             )
             
             live_results = []
