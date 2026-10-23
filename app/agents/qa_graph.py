@@ -1,10 +1,13 @@
 import logging
 import json
 import re
-import httpx
 from typing import Dict, Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
+
+# ✅ Official MCP Client imports (handshake + session handled automatically)
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
 
 from app.agents.prompts import SYSTEM_QA_PROMPT
 from app.agents.state import QAState
@@ -18,7 +21,7 @@ NO_CONTEXT_ANSWER = (
     "অনুগ্রহ করে আপনার পরিস্থিতি বা ঘটনাটি আরও সুনির্দিষ্টভাবে লিখুন।"
 )
 
-# ✅ ডাইনামিক রাউটার প্রম্পট (কোনো হার্ডকোড নেই, বরং Few-Shot Examples দেওয়া আছে)
+# ✅ ডাইনামিক রাউটার প্রম্পট (কোনো হার্ডকোড নেই, বরং Few-Shot Examples দেওয়া আছে)
 QUERY_ROUTER_PROMPT = """
 You are the intelligent query router for Advotech Copilot, a Bangladesh-law assistant.
 Classify the CURRENT request as exactly one of:
@@ -32,8 +35,8 @@ CRITICAL RULES FOR CLASSIFICATION:
 - If the user provides a detailed scenario, even if they are missing some facts, you MUST classify as "ANSWERABLE".
 
 EXAMPLES:
-- Query: "আমাকে চাকরি থেকে বাদ দিয়েছে।" -> "NEEDS_CLARIFICATION" (Too vague, missing facts)
-- Query: "আমার কোম্পানি আমাকে ৩ মাসের নোটিশ না দিয়েই বের করে দিয়েছে।" -> "ANSWERABLE" (Has specific facts, direct answer possible)
+- Query: "আমাকে চাকরি থেকে বাদ দিয়েছে।" -> "NEEDS_CLARIFICATION" (Too vague, missing facts)
+- Query: "আমার কোম্পানি আমাকে ৩ মাসের নোটিশ না দিয়েই বের করে দিয়েছে।" -> "ANSWERABLE" (Has specific facts, direct answer possible)
 - Query: "What is Section 138?" -> "ANSWERABLE" (Statutory lookup)
 
 ALSO, determine if this query requires searching for live case law/precedents (e.g., asks for recent verdicts, supreme court rulings).
@@ -92,48 +95,25 @@ def _fallback_route(query, contract_context):
     return "ANSWERABLE", True, ""
 
 
-# ✅ Helper function to call the Remote MCP Server deployed on Render
+# ✅ UPDATED: Official MCP Client (handles initialize handshake + Mcp-Session-Id automatically)
 async def call_remote_mcp_tool(tool_name: str, arguments: dict) -> dict:
     """
-    Sends a JSON-RPC request to the standalone MCP server on Render.
+    Sends a request to the standalone MCP server on Render using the official MCP Client.
+    Handles handshake (initialize) and session IDs automatically — no more 400 Bad Request.
     """
     MCP_URL = "https://bd-legal-mcp-server.onrender.com/mcp"
-    
-    payload = {
-        "jsonrpc": "2.0",
-        "method": "tools/call",
-        "params": {
-            "name": tool_name,
-            "arguments": arguments
-        },
-        "id": 1
-    }
-    
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream"
-    }
 
-    async with httpx.AsyncClient() as client:
-        try:
-            # Render free tier wake-up timeout handled (120s to prevent 502)
-            response = await client.post(MCP_URL, json=payload, headers=headers, timeout=120.0)
-            response.raise_for_status()
-            
-            # Parse Server-Sent Events (SSE) response if the server uses it
-            for line in response.text.splitlines():
-                if line.startswith("data: "):
-                    data = json.loads(line[6:])
-                    if "result" in data:
-                        return data["result"]
-                elif line.startswith("{"): # Fallback if it returns raw JSON
-                    data = json.loads(line)
-                    if "result" in data:
-                        return data["result"]
-            return {}
-        except Exception as e:
-            logger.error(f"[call_remote_mcp_tool] Remote MCP Call Failed: {e}")
-            return {}
+    try:
+        async with streamablehttp_client(MCP_URL) as (read_stream, write_stream, _):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                result = await session.call_tool(tool_name, arguments)
+
+                # Return the exact format our parsing logic in retrieve_node expects
+                return {"content": [item.model_dump() for item in result.content]}
+    except Exception as e:
+        logger.error(f"[call_remote_mcp_tool] Remote MCP Call Failed: {e}")
+        return {}
 
 
 async def classify_query_node(state: QAState) -> dict:
@@ -144,12 +124,12 @@ async def classify_query_node(state: QAState) -> dict:
     if not query:
         return {"final_answer": "অনুগ্রহ করে আপনার আইনি প্রশ্নটি লিখুন।", "retrieved_docs": [], "citation_verified": False}
 
-    # ✅ FIX 1: যদি ইউজার আগের পাল্টা প্রশ্নের উত্তর দেয় (Infinite Loop fix), তবে সরাসরি সার্চে যাবে
+    # ✅ FIX 1: যদি ইউজার আগের পাল্টা প্রশ্নের উত্তর দেয় (Infinite Loop fix), তবে সরাসরি সার্চে যাবে
     if state.get("force_answerable"):
         logger.info("[classify_query_node] Bypassing LLM router: User is answering previous clarification.")
         return {"final_answer": None, "query_type": "ANSWERABLE", "needs_case_law": True, "retrieved_docs": [], "citation_verified": False}
 
-    # ✅ FIX 2: যদি ইউজার সরাসরি কোনো নির্দিষ্ট ধারা/অনুচ্ছেদ জিজ্ঞেস করে, তবে রাউটার বাইপাস (স্পিড বাড়ানোর জন্য)
+    # ✅ FIX 2: যদি ইউজার সরাসরি কোনো নির্দিষ্ট ধারা/অনুচ্ছেদ জিজ্ঞেস করে, তবে রাউটার বাইপাস (স্পিড বাড়ানোর জন্য)
     if re.search(r"(section|article|ধারা|অনুচ্ছেদ)\s*\d+", query, re.IGNORECASE):
         logger.info("[classify_query_node] Bypassing LLM router (Explicit Section/Article detected).")
         
@@ -234,17 +214,17 @@ async def retrieve_node(state: QAState) -> dict:
         try:
             logger.info(f"[retrieve_node] Triggering Remote MCP live case law search for: {query}")
             
-            # ✅ FIX: Calling the Render MCP server instead of local function
+            # ✅ Calling the Render MCP server via official MCP Client
             mcp_response = await call_remote_mcp_tool(
                 tool_name="search_live_bd_judgements", 
                 arguments={"query": query, "max_results": 2}
             )
             
-            # Extracting the actual results from the JSON-RPC response content
+            # Extracting the actual results from the MCP response content
             # The tool returns a list of dicts, so we handle the structure
             live_results = []
             if "content" in mcp_response:
-                # MCP returns content as a list of TextContent objects
+                # MCP returns content as a list of TextContent-like dicts
                 for item in mcp_response["content"]:
                     if isinstance(item, dict) and item.get("type") == "text":
                         try:

@@ -1,49 +1,44 @@
 import re
-import httpx
 import json
 import logging
 from typing import Dict, Any, List
+
+# ✅ Official MCP Client imports (handshake + session handled automatically)
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
 
 logger = logging.getLogger(__name__)
 BN_TO_EN_DIGITS = str.maketrans("০১২৩৪৫৬৭৮৯", "0123456789")
 
 
-# ✅ NEW: Remote MCP Verify Helper
+# ✅ UPDATED: Official MCP Client (handles initialize handshake + Mcp-Session-Id automatically)
 async def _call_remote_verify_mcp(act_name: str, section_num: str) -> bool:
     """
     Calls the standalone MCP server on Render to verify a specific statute section.
+    Uses the official MCP Client for proper handshaking (initialize + session ID).
     """
     MCP_URL = "https://bd-legal-mcp-server.onrender.com/mcp"
-    
-    payload = {
-        "jsonrpc": "2.0",
-        "method": "tools/call",
-        "params": {
-            "name": "verify_legal_citation",
-            "arguments": {"statute_act": act_name, "cited_section": section_num}
-        },
-        "id": 1
-    }
-    
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream"
-    }
 
-    # ✅ FIX: No try-except here. Let it raise so the caller can fallback.
-    async with httpx.AsyncClient() as client:
-        response = await client.post(MCP_URL, json=payload, headers=headers, timeout=120.0)
-        response.raise_for_status()
-        
-        # Parse SSE (Server-Sent Events) response
-        for line in response.text.splitlines():
-            if line.startswith("data: "):
-                data = json.loads(line[6:])
-                # Extract JSON from MCP content block
-                result_text = data.get("result", {}).get("content", [{}])[0].get("text", "{}")
-                parsed_result = json.loads(result_text)
-                return parsed_result.get("valid", False)
-                
+    # ✅ No try-except here. Let it raise so the caller can fallback to local regex.
+    async with streamablehttp_client(MCP_URL) as (read_stream, write_stream, _):
+        async with ClientSession(read_stream, write_stream) as session:
+            await session.initialize()
+            result = await session.call_tool(
+                "verify_legal_citation",
+                {"statute_act": act_name, "cited_section": section_num}
+            )
+
+            # Parse the MCP response content blocks
+            for item in result.content:
+                # item is a TextContent-like object; model_dump() gives a dict
+                item_dict = item.model_dump() if hasattr(item, "model_dump") else item
+                if isinstance(item_dict, dict) and item_dict.get("type") == "text":
+                    try:
+                        parsed_result = json.loads(item_dict.get("text", "{}"))
+                        return parsed_result.get("valid", False)
+                    except json.JSONDecodeError:
+                        continue
+
     return False
 
 
@@ -92,7 +87,7 @@ class CitationVerifier:
 
         return {"citation_verified": all_matched, "citations": verified_citations}
 
-    # ✅ FIX: Made async to call the remote MCP server
+    # ✅ Async: calls the remote MCP server for strict verification
     async def verify_structured_response(self, parsed_json: dict, retrieved_docs: List[dict]) -> dict:
         """
         [NEW STRICT VERIFIER] Verifies the LLM's JSON output against the remote MCP server.
