@@ -61,15 +61,19 @@ def _content_text(value):
 
 
 def _json_object(value):
+    if not value:
+        return None
     value = re.sub(r"^```(?:json)?\s*|\s*```$", "", value.strip(), flags=re.I)
+    
+    # ✅ FIX: strict=False allows unescaped control characters (like newlines) inside strings
     try:
-        parsed = json.loads(value)
+        parsed = json.loads(value, strict=False)
         return parsed if isinstance(parsed, dict) else None
     except Exception:
         match = re.search(r"\{.*\}", value, re.S)
         if match:
             try:
-                parsed = json.loads(match.group(0))
+                parsed = json.loads(match.group(0), strict=False)
                 return parsed if isinstance(parsed, dict) else None
             except Exception:
                 pass
@@ -241,7 +245,8 @@ async def retrieve_node(state: QAState) -> dict:
                         logger.info(f"[MCP RAW RESPONSE]: {raw_text[:500]}...")
                         
                         try:
-                            parsed_res = json.loads(raw_text)
+                            # ✅ FIX: strict=False to prevent crashes on unescaped control chars
+                            parsed_res = json.loads(raw_text, strict=False)
                             # যদি list হয় (যেমন: [{...}, {...}])
                             if isinstance(parsed_res, list):
                                 live_results.extend(parsed_res)
