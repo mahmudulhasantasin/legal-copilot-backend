@@ -92,7 +92,7 @@ def _fallback_route(query, contract_context):
     return "ANSWERABLE", True, ""
 
 
-# ✅ NEW: Helper function to call the Remote MCP Server deployed on Render
+# ✅ Helper function to call the Remote MCP Server deployed on Render
 async def call_remote_mcp_tool(tool_name: str, arguments: dict) -> dict:
     """
     Sends a JSON-RPC request to the standalone MCP server on Render.
@@ -116,8 +116,8 @@ async def call_remote_mcp_tool(tool_name: str, arguments: dict) -> dict:
 
     async with httpx.AsyncClient() as client:
         try:
-            # Render free tier wake-up timeout handled (60s)
-            response = await client.post(MCP_URL, json=payload, headers=headers, timeout=60.0)
+            # Render free tier wake-up timeout handled (120s to prevent 502)
+            response = await client.post(MCP_URL, json=payload, headers=headers, timeout=120.0)
             response.raise_for_status()
             
             # Parse Server-Sent Events (SSE) response if the server uses it
@@ -152,7 +152,12 @@ async def classify_query_node(state: QAState) -> dict:
     # ✅ FIX 2: যদি ইউজার সরাসরি কোনো নির্দিষ্ট ধারা/অনুচ্ছেদ জিজ্ঞেস করে, তবে রাউটার বাইপাস (স্পিড বাড়ানোর জন্য)
     if re.search(r"(section|article|ধারা|অনুচ্ছেদ)\s*\d+", query, re.IGNORECASE):
         logger.info("[classify_query_node] Bypassing LLM router (Explicit Section/Article detected).")
-        return {"final_answer": None, "query_type": "ANSWERABLE", "needs_case_law": False, "retrieved_docs": [], "citation_verified": False}
+        
+        # ✅ NEW FIX: চেক করো ইউজার একইসাথে লাইভ কেস ল-ও চাইছে কি না
+        case_law_keywords = ["recent", "supreme court", "verdict", "judgment", "case", "রায়", "মামলা", "সাম্প্রতিক", "লাইভ"]
+        needs_case_law = any(k in query.lower() for k in case_law_keywords)
+        
+        return {"final_answer": None, "query_type": "ANSWERABLE", "needs_case_law": needs_case_law, "retrieved_docs": [], "citation_verified": False}
         
     try:
         llm = get_llm()

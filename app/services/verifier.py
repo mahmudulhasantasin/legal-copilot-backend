@@ -30,23 +30,20 @@ async def _call_remote_verify_mcp(act_name: str, section_num: str) -> bool:
         "Accept": "application/json, text/event-stream"
     }
 
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(MCP_URL, json=payload, headers=headers, timeout=60.0)
-            response.raise_for_status()
-            
-            # Parse SSE (Server-Sent Events) response
-            for line in response.text.splitlines():
-                if line.startswith("data: "):
-                    data = json.loads(line[6:])
-                    # Extract JSON from MCP content block
-                    result_text = data.get("result", {}).get("content", [{}])[0].get("text", "{}")
-                    parsed_result = json.loads(result_text)
-                    return parsed_result.get("valid", False)
-                    
-    except Exception as e:
-        logger.error(f"[MCP Verify] Failed for {act_name} Section {section_num}: {e}")
+    # ✅ FIX: No try-except here. Let it raise so the caller can fallback.
+    async with httpx.AsyncClient() as client:
+        response = await client.post(MCP_URL, json=payload, headers=headers, timeout=120.0)
+        response.raise_for_status()
         
+        # Parse SSE (Server-Sent Events) response
+        for line in response.text.splitlines():
+            if line.startswith("data: "):
+                data = json.loads(line[6:])
+                # Extract JSON from MCP content block
+                result_text = data.get("result", {}).get("content", [{}])[0].get("text", "{}")
+                parsed_result = json.loads(result_text)
+                return parsed_result.get("valid", False)
+                
     return False
 
 
@@ -107,18 +104,26 @@ class CitationVerifier:
         cited_sections = parsed_json.get("cited_sections", []) or []
         cited_cases = parsed_json.get("cited_cases", []) or []
 
-        # 1. Prepare Context Strings from retrieved docs (For Case Law fallback)
+        # 1. Prepare Context Strings from retrieved docs
+        statute_context = ""
         precedent_context = ""
+        
         for doc in retrieved_docs:
+            text = doc.get("text") or doc.get("content") or ""
+            text = str(text).translate(BN_TO_EN_DIGITS).lower()
+
             if doc.get("source_type") == "precedent":
                 title = str(doc.get("title", "")).lower()
-                text = str(doc.get("content", "")).lower()
                 precedent_context += f" {title} {text} "
+            else:
+                act = str(doc.get("act", "")).lower()
+                sec = str(doc.get("section", "")).translate(BN_TO_EN_DIGITS).lower()
+                statute_context += f" {act} {sec} {text} "
 
         verified_sections = []
         all_sections_valid = True
 
-        # 2. Verify Statutory Sections via MCP
+        # 2. Verify Statutory Sections via MCP (with local regex fallback)
         for sec in cited_sections:
             act_name = str(sec.get("act", ""))
             sec_num = str(sec.get("section", ""))
@@ -129,8 +134,14 @@ class CitationVerifier:
             if not sec_num_clean:
                 continue
 
-            # ✅ Call Remote MCP Server for 100% accurate verification
-            is_valid = await _call_remote_verify_mcp(act_name, sec_num_clean)
+            is_valid = False
+            try:
+                # ✅ Call Remote MCP Server for 100% accurate verification
+                is_valid = await _call_remote_verify_mcp(act_name, sec_num_clean)
+            except Exception as e:
+                logger.warning(f"[MCP Verify] Failed (likely 502/Timeout). Falling back to local regex: {e}")
+                # ✅ Fallback: Local regex check against retrieved Qdrant docs
+                is_valid = bool(re.search(rf"\b{re.escape(sec_num_clean)}\b", statute_context))
 
             verified_sections.append({
                 "act": sec.get("act"),
