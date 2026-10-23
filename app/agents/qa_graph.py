@@ -363,12 +363,32 @@ async def generate_answer_node(state: QAState) -> dict:
         response = await llm.ainvoke(messages)
         raw_answer = _content_text(getattr(response, "content", response))
         
+        # Clean markdown wrappers
+        raw_answer = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_answer.strip(), flags=re.I)
+        
         parsed_json = _json_object(raw_answer)
         
         if parsed_json and "detailed_answer" in parsed_json:
             final_text = parsed_json.get("detailed_answer", "")
         else:
-            final_text = raw_answer
+            # ✅ ULTIMATE FALLBACK: If JSON is broken or incomplete (due to max_tokens limit), 
+            # extract only the text part using regex
+            logger.warning("[generate_answer_node] JSON broken/incomplete. Using Regex fallback.")
+            
+            # Match everything after "detailed_answer": "..."
+            match = re.search(r'"detailed_answer"\s*:\s*"(.*)', raw_answer, re.DOTALL)
+            if match:
+                final_text = match.group(1)
+                # Remove trailing JSON artifacts if present
+                for end_marker in ['",\n  "cited_sections"', '", "cited_sections"', '",\n "cited_sections"', '"\n}']:
+                    if end_marker in final_text:
+                        final_text = final_text.split(end_marker)[0]
+                
+                # Unescape common JSON characters
+                final_text = final_text.replace('\\n', '\n').replace('\\"', '"').replace('\\\\', '\\').strip(' "{}')
+            else:
+                final_text = raw_answer
+            
             parsed_json = {
                 "detailed_answer": final_text,
                 "cited_sections": [],
