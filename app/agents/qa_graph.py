@@ -67,7 +67,7 @@ def _json_object(value):
     
     # ✅ FIX: strict=False allows unescaped control characters (like newlines) inside strings
     try:
-        parsed = json.loads(value, strict=False)
+        parsed = json.loads(value, strict=False) 
         return parsed if isinstance(parsed, dict) else None
     except Exception:
         match = re.search(r"\{.*\}", value, re.S)
