@@ -22,7 +22,7 @@ from app.models.user import (
 )
 from app.models.playbook import Enterprise, EnterpriseStatus, generate_referral_code
 from app.models.lawyer import LawyerProfile, LawyerStatus
-from app.services.email_service import send_otp_email
+from app.services.email_service import send_otp_email, send_password_reset_email  # ✅ UPDATED
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
@@ -105,18 +105,43 @@ class GoogleRegisterRequest(BaseModel):
             raise ValueError("Passwords do not match.")
         return v
 
+# ✅ NEW — forgot-password schemas
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    otp_code: str = Field(min_length=6, max_length=6)
+    new_password: str = Field(min_length=6, max_length=128)
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
     role: str
     credit_balance: int
     is_verified: bool
+    # ✅ NEW — must match _issue_token() response (fixes undefined user on frontend)
+    user_id: str
+    email: str
+    full_name: str
+    is_phone_verified: bool
 
 class LawyerInfoResponse(BaseModel):
     bar_council_id: Optional[str] = None
     experience_years: Optional[int] = None
     specializations: List[str] = Field(default_factory=list)
     verification_status: str = "pending"
+
+# ✅ NEW — nested enterprise info for frontend company name display
+class EnterpriseProfileResponse(BaseModel):
+    company_name: str
+    company_type: Optional[str] = None
+    registration_no: Optional[str] = None
+    tin_no: Optional[str] = None
+    refer_code: Optional[str] = None
+    member_limit: Optional[int] = None
+    verification_status: str = "pending"  # "verified" | "pending" | "rejected"
+    is_team_member: bool = False
 
 class UserResponse(BaseModel):
     id: int
@@ -137,6 +162,8 @@ class UserResponse(BaseModel):
     enterprise_id: Optional[int] = None
     profile_photo_url: Optional[str] = None
     lawyer_profile: Optional[LawyerInfoResponse] = None
+    # ✅ NEW — populated for enterprise users (admin + member)
+    enterprise_profile: Optional[EnterpriseProfileResponse] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -173,6 +200,11 @@ def _issue_token(user: User) -> dict:
     return {
         "access_token": token, "token_type": "bearer", "role": user.role.value,
         "credit_balance": user.credit_balance, "is_verified": user.is_verified,
+        # ✅ NEW — required by frontend TokenResponse
+        "user_id": str(user.id),
+        "email": user.email,
+        "full_name": user.full_name,
+        "is_phone_verified": user.is_verified,  # no dedicated column yet
     }
 
 async def _get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
@@ -271,6 +303,72 @@ async def resend_otp(payload: ResendOtpRequest, background_tasks: BackgroundTask
     await _send_and_store_otp(db, user, background_tasks)
     return {"message": "New OTP sent."}
 
+
+# ✅ NEW — forgot password endpoints
+@router.post("/forgot-password")
+async def forgot_password(
+    payload: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Sends a password-reset OTP to the user's email.
+    Returns 200 even if email doesn't exist (prevents account enumeration).
+    """
+    user = await _get_user_by_email(db, payload.email)
+
+    # Don't leak whether the email exists
+    if not user:
+        return {"message": "If this email exists, a reset code has been sent."}
+
+    # Unverified users can't reset — they need to finish signup first
+    if not user.is_verified:
+        raise HTTPException(
+            400,
+            "Email not verified. Please complete signup verification first."
+        )
+
+    if not user.is_active:
+        raise HTTPException(403, "Account disabled.")
+
+    otp = _generate_otp()
+    user.otp_code = otp
+    user.otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES)
+    await db.commit()
+
+    background_tasks.add_task(send_password_reset_email, user.email, otp)
+
+    return {"message": "If this email exists, a reset code has been sent."}
+
+
+@router.post("/reset-password", response_model=Token)
+async def reset_password(
+    payload: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Verifies the reset OTP and sets a new password.
+    Returns a fresh token so the user is logged in immediately.
+    """
+    user = await _get_user_by_email(db, payload.email)
+    if not user:
+        raise HTTPException(404, "No account found for this email.")
+    if not user.is_verified:
+        raise HTTPException(400, "Email not verified. Please complete signup first.")
+
+    _check_otp(user, payload.otp_code)
+
+    user.otp_code = None
+    user.otp_expires_at = None
+    user.hashed_password = get_password_hash(payload.new_password)
+
+    await db.commit()
+    await db.refresh(user)
+    await update_last_login(db, user)
+
+    return _issue_token(user)
+
+
 @router.post("/register/enterprise-member", status_code=status.HTTP_201_CREATED)
 async def register_enterprise_member(payload: EnterpriseMemberRegisterRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     email = payload.email.lower().strip()
@@ -338,6 +436,12 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     user = await _get_user_by_email(db, payload.email)
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(401, "Incorrect email or password.")
+    # ✅ Block unverified users — must finish OTP before issuing a token
+    if not user.is_verified:
+        raise HTTPException(
+            403,
+            "Email not verified. Please complete OTP verification before signing in.",
+        )
     if not user.is_active:
         raise HTTPException(403, "Account disabled.")
     await update_last_login(db, user)
@@ -430,8 +534,9 @@ async def get_me(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Returns the authenticated user with nested lawyer_profile (for lawyers)
-    and enterprise_credit_balance (for enterprise admins/members).
+    Returns the authenticated user with nested lawyer_profile (for lawyers),
+    enterprise_credit_balance (for enterprise admins/members), and
+    enterprise_profile (company name, RJSC, TIN, referral code, etc.).
     """
     response = UserResponse(
         id=current_user.id,
@@ -442,22 +547,34 @@ async def get_me(
         subscription_tier=current_user.subscription_tier,
         credit_balance=current_user.credit_balance,
         enterprise_credit_balance=None,
-        member_credit_quota=None, # ✅ NEW Default
-        member_credit_used=None,  # ✅ NEW Default
+        member_credit_quota=None,
+        member_credit_used=None,
         is_active=current_user.is_active,
         is_verified=current_user.is_verified,
         enterprise_id=current_user.enterprise_id,
         profile_photo_url=current_user.profile_photo_url,
-        lawyer_profile=None
+        lawyer_profile=None,
+        enterprise_profile=None,   # ✅ NEW default
     )
 
-    # ✅ Fetch Company Pool Balance for Enterprise Roles
+    # ✅ Fetch Company Pool Balance + Enterprise Profile for Enterprise Roles
     if current_user.role in (UserRole.ENTERPRISE_ADMIN, UserRole.ENTERPRISE_MEMBER) and current_user.enterprise_id:
         enterprise = await db.scalar(
             select(Enterprise).where(Enterprise.id == current_user.enterprise_id)
         )
         if enterprise:
             response.enterprise_credit_balance = enterprise.credit_balance
+            # ✅ NEW — populate nested enterprise profile for frontend
+            response.enterprise_profile = EnterpriseProfileResponse(
+                company_name=enterprise.name,
+                company_type=enterprise.company_type,
+                registration_no=enterprise.registration_no,
+                tin_no=enterprise.tin_no,
+                refer_code=enterprise.referral_code,
+                member_limit=enterprise.member_limit,
+                verification_status="verified" if enterprise.status == EnterpriseStatus.ACTIVE else "pending",
+                is_team_member=(current_user.role == UserRole.ENTERPRISE_MEMBER),
+            )
 
     # ✅ NEW: Populate Member Quota Details (Only for ENTERPRISE_MEMBER)
     if current_user.role == UserRole.ENTERPRISE_MEMBER:

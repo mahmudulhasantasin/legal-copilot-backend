@@ -17,6 +17,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user, check_and_deduct_credits, refund_credits
 from app.core.pricing import get_audit_cost, get_service_cost, get_lawyer_verification_split
 from app.models.user import User, UserRole, CreditTxType
+from app.models.lawyer import LawyerProfile           # ✅ NEW — for GET /{id}
 from app.models.memo import Contract, ContractMemo, RiskLevel, HITLStatus
 from app.models.playbook import CompanyPlaybook
 from app.services.ingestion import extract_text_from_file
@@ -32,6 +33,7 @@ router = APIRouter(prefix="/api/contracts", tags=["Contract Audit & HITL"])
 SUPABASE_URL = getattr(settings, "SUPABASE_URL", "")
 SUPABASE_KEY = getattr(settings, "SUPABASE_SERVICE_KEY", "")
 BUCKET_NAME = "contracts"
+
 
 def get_supabase() -> Client:
     if not SUPABASE_URL or not SUPABASE_KEY:
@@ -54,6 +56,7 @@ class ClauseAnalysisItem(BaseModel):
     proposed_safe_redline: Optional[str] = None
     is_compliant: bool = False
 
+
 class ContractMemoResponse(BaseModel):
     memo_id: int
     contract_id: int
@@ -68,6 +71,7 @@ class ContractMemoResponse(BaseModel):
     lawyer_notes: Optional[str] = None
     lawyer_signature: Optional[str] = None
     completed_at: Optional[datetime] = None
+
 
 class RequestVerificationResponse(BaseModel):
     status: str
@@ -184,8 +188,15 @@ async def upload_and_audit(
     for idx, risk in enumerate(detected_risks, start=1):
         severity = str(risk.get("severity", "MODERATE")).upper()
         is_comp = severity in ["LOW", "COMPLIANT"]
-        risk_label = "High Risk" if severity == "HIGH" else ("Review Needed" if severity in ["MODERATE", "MEDIUM"] else "Compliant")
-        
+
+        # ✅ CANONICAL RISK LABELS — must match frontend `normalizeRiskLevel()`
+        if severity in ("HIGH", "CRITICAL"):
+            risk_label = "HIGH"
+        elif severity in ("MODERATE", "MEDIUM"):
+            risk_label = "MODERATE"
+        else:
+            risk_label = "LOW"
+
         ui_clauses.append({
             "clause_number": f"§ {idx}",
             "clause_title": risk.get("clause_title", f"Clause {idx}"),
@@ -196,12 +207,12 @@ async def upload_and_audit(
             "proposed_safe_redline": risk.get("recommendation"),
             "is_compliant": is_comp
         })
-        
+
     if not ui_clauses:
         ui_clauses.append({
             "clause_number": "§ 1",
             "clause_title": "General Compliance",
-            "risk_level": "Compliant",
+            "risk_level": "LOW",                 # ✅ was "Compliant"
             "original_text": "Document scanned.",
             "statute_reference": "N/A",
             "legal_explanation": "No risks detected.",
@@ -218,7 +229,10 @@ async def upload_and_audit(
         file_path=storage_path,
         file_size_mb=round(len(file_bytes) / (1024 * 1024), 2),
         file_mime_type=file.content_type,
-        is_workspace_shared=True # ✅ Auto-share to company (Enterprise use case)
+        # ✅ Only auto-share to company vault for enterprise users
+        is_workspace_shared=bool(
+            current_user.is_enterprise_user and current_user.enterprise_id
+        )
     )
     db.add(contract)
     await db.flush()
@@ -235,7 +249,7 @@ async def upload_and_audit(
         hitl_status=HITLStatus.NOT_REQUESTED
     )
     db.add(memo)
-    
+
     await db.commit()
     await db.refresh(contract)
     await db.refresh(memo)
@@ -275,7 +289,7 @@ async def request_lawyer_verification(
 
     split = get_lawyer_verification_split()
     cost_credits = int(split["credits_to_deduct"])
-    
+
     await check_and_deduct_credits(
         user=current_user,
         db=db,
@@ -297,16 +311,21 @@ async def request_lawyer_verification(
 
     await db.flush()
     success = await generate_initial_offer(db, memo)
-    
+
     if not success:
-        await refund_credits(
-            db=db, 
-            user=current_user, 
-            amount=cost_credits, 
-            reason="No eligible lawyers available at this time.", 
-            reference_id=str(memo.id)
+        # ✅ Refund to the SAME pool that was charged (enterprise pool or personal wallet)
+        refund_enterprise_id = (
+            current_user.enterprise_id if current_user.is_enterprise_user else None
         )
-        
+        await refund_credits(
+            db=db,
+            user=current_user,
+            amount=cost_credits,
+            reason="No eligible lawyers available at this time.",
+            reference_id=str(memo.id),
+            enterprise_id=refund_enterprise_id,
+        )
+
         memo.hitl_status = HITLStatus.REFUNDED
         memo.refunded_at = now
         memo.refund_reason = "No eligible lawyers available at this time."
@@ -334,7 +353,7 @@ async def get_my_contracts(
         Contract.user_id == current_user.id,
         Contract.deleted_at == None
     )
-    
+
     if current_user.is_enterprise_user and current_user.enterprise_id:
         stmt = select(Contract, ContractMemo).join(ContractMemo).where(
             or_(
@@ -343,7 +362,7 @@ async def get_my_contracts(
             ),
             Contract.deleted_at == None
         )
-        
+
     stmt = stmt.order_by(desc(Contract.created_at)).limit(limit).offset(offset)
     rows = (await db.execute(stmt)).all()
 
@@ -356,7 +375,7 @@ async def get_my_contracts(
             "risk_score": m.risk_score,
             "hitl_status": m.hitl_status.value,
             "created_at": c.created_at,
-            "is_workspace_shared": c.is_workspace_shared # ✅ Returns True for enterprise audits
+            "is_workspace_shared": c.is_workspace_shared  # ✅ Returns True only for enterprise audits
         }
         for c, m in rows
     ]
@@ -380,10 +399,10 @@ async def delete_contract(
     )
     if not contract:
         raise HTTPException(404, "Contract not found or already deleted.")
-    
+
     contract.deleted_at = datetime.now(timezone.utc)
     await db.commit()
-    
+
     return {"status": "success", "message": "Contract deleted successfully."}
 
 
@@ -405,7 +424,7 @@ async def get_download_url(
     row = result.first()
     if not row:
         raise HTTPException(404, "Contract not found.")
-    
+
     contract, memo = row
 
     file_to_download = contract.file_path
@@ -422,3 +441,77 @@ async def get_download_url(
     except Exception as e:
         logger.error(f"[Supabase] Signed URL failed: {e}")
         raise HTTPException(500, "Could not generate download link.")
+
+
+# ──────────────────────────────────────────────────────────
+# NEW: GET single contract + memo (archive / detail view)
+# ⚠️  MUST be registered AFTER `/history` — otherwise Starlette
+#     would try to parse "history" as `contract_id: int`.
+# ──────────────────────────────────────────────────────────
+
+@router.get("/{contract_id}", response_model=ContractMemoResponse)
+async def get_contract_detail(
+    contract_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Fetch a single contract + memo for the archive / audit detail view.
+    Accessible to the owner OR any user in the same enterprise.
+    """
+    result = await db.execute(
+        select(Contract, ContractMemo)
+        .join(ContractMemo, Contract.id == ContractMemo.contract_id)
+        .where(
+            Contract.id == contract_id,
+            Contract.deleted_at == None,
+        )
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(404, "Contract not found.")
+
+    contract, memo = row
+
+    # ── Access check: owner OR same-enterprise user ──
+    is_owner = contract.user_id == current_user.id
+    is_same_enterprise = (
+        current_user.enterprise_id is not None
+        and contract.enterprise_id == current_user.enterprise_id
+        and current_user.role in (UserRole.ENTERPRISE_ADMIN, UserRole.ENTERPRISE_MEMBER)
+    )
+    if not (is_owner or is_same_enterprise):
+        raise HTTPException(403, "Access denied.")
+
+    # ── Lawyer name (if HITL was assigned/completed) ──
+    lawyer_name: Optional[str] = None
+    if memo.lawyer_id:
+        lawyer_profile = await db.scalar(
+            select(LawyerProfile).where(LawyerProfile.id == memo.lawyer_id)
+        )
+        if lawyer_profile:
+            lawyer_user = await db.scalar(
+                select(User).where(User.id == lawyer_profile.user_id)
+            )
+            if lawyer_user:
+                lawyer_name = lawyer_user.full_name
+
+    return ContractMemoResponse(
+        memo_id=memo.id,
+        contract_id=contract.id,
+        title=contract.title,
+        overall_risk=memo.overall_risk,
+        risk_score=memo.risk_score,
+        executive_summary=memo.executive_summary or "",
+        counts={
+            "high_risk": memo.high_risk_count,
+            "review_needed": memo.moderate_risk_count,
+            "compliant": memo.compliant_count,
+        },
+        clauses=[ClauseAnalysisItem(**c) for c in (memo.clauses_analysis or [])],
+        hitl_status=memo.hitl_status,
+        lawyer_name=lawyer_name,
+        lawyer_notes=memo.lawyer_notes,
+        lawyer_signature=memo.lawyer_signature,
+        completed_at=memo.completed_at,
+    )

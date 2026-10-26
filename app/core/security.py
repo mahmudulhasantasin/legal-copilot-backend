@@ -106,6 +106,14 @@ async def get_current_user(
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Inactive user account.")
 
+    # ✅ Defence-in-depth — reject stale JWTs belonging to unverified users
+    # (covers tokens issued before login Fix was deployed, or manually crafted)
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=403,
+            detail="Email not verified. Please complete OTP verification.",
+        )
+
     return user
 
 
