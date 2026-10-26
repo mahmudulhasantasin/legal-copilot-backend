@@ -76,6 +76,7 @@ class LawyerProfile(Base):
         index=True, nullable=False
     )
     max_concurrent_tasks: Mapped[int] = mapped_column(Integer, default=5)
+    auto_accept_offers: Mapped[bool] = mapped_column(Boolean, default=False) # ✅ NEW
     active_task_count: Mapped[int] = mapped_column(Integer, default=0, index=True)
 
     # ── Reputation ──

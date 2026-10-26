@@ -50,6 +50,8 @@ class LawyerSettingsInfo(BaseModel):
     rating: float
     monthly_free_chat_used: int
     monthly_free_chat_remaining: int
+    max_concurrent_tasks: int       # ✅ NEW
+    auto_accept_offers: bool        # ✅ NEW
 
 class UserSettingsResponse(BaseModel):
     id: int
@@ -61,7 +63,7 @@ class UserSettingsResponse(BaseModel):
     credit_balance: int
     is_verified: bool
     last_login_at: Optional[str]
-    profile_photo_url: Optional[str] = None  # ✅ নতুন যুক্ত হলো
+    profile_photo_url: Optional[str] = None
     
     # Role-specific contexts
     enterprise: Optional[EnterpriseSettingsInfo] = None
@@ -79,6 +81,8 @@ class LawyerPreferencesPayload(BaseModel):
     specializations: Optional[List[str]] = None
     availability: Optional[LawyerAvailability] = None
     bio: Optional[str] = Field(default=None, max_length=1000)
+    max_concurrent_tasks: Optional[int] = Field(default=None, ge=1, le=20) # ✅ NEW
+    auto_accept_offers: Optional[bool] = None                             # ✅ NEW
 
 
 # ──────────────────────────────────────────────────────────
@@ -104,7 +108,7 @@ async def get_my_settings(
         credit_balance=current_user.credit_balance,
         is_verified=current_user.is_verified,
         last_login_at=current_user.last_login_at.isoformat() if current_user.last_login_at else None,
-        profile_photo_url=current_user.profile_photo_url, # ✅ নতুন যুক্ত হলো
+        profile_photo_url=current_user.profile_photo_url,
     )
 
     # ── Enterprise Context ──
@@ -133,7 +137,9 @@ async def get_my_settings(
                 completed_reviews=profile.completed_reviews_count,
                 rating=profile.rating_average,
                 monthly_free_chat_used=current_user.monthly_free_chat_used,
-                monthly_free_chat_remaining=max(0, LAWYER_MONTHLY_FREE_CHAT_CREDITS - current_user.monthly_free_chat_used)
+                monthly_free_chat_remaining=max(0, LAWYER_MONTHLY_FREE_CHAT_CREDITS - current_user.monthly_free_chat_used),
+                max_concurrent_tasks=profile.max_concurrent_tasks, # ✅ NEW
+                auto_accept_offers=profile.auto_accept_offers      # ✅ NEW
             )
 
     return response
@@ -256,6 +262,12 @@ async def update_lawyer_settings(
         if payload.availability == LawyerAvailability.BUSY:
             raise HTTPException(400, "BUSY status is managed automatically by the system.")
         profile.availability = payload.availability
+        
+    # ✅ Save new fields
+    if payload.max_concurrent_tasks is not None:
+        profile.max_concurrent_tasks = payload.max_concurrent_tasks
+    if payload.auto_accept_offers is not None:
+        profile.auto_accept_offers = payload.auto_accept_offers
 
     await db.commit()
     return {"status": "success", "message": "Lawyer preferences updated."}

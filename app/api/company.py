@@ -43,6 +43,24 @@ async def get_admin_enterprise(
     return ent
 
 
+# ✅ NEW: Guard to allow Enterprise Members to access read-only company data
+async def get_enterprise_user(
+    current_user: User = Depends(require_roles([UserRole.ENTERPRISE_ADMIN, UserRole.ENTERPRISE_MEMBER])),
+    db: AsyncSession = Depends(get_db),
+) -> Enterprise:
+    """Allows both Enterprise Admins and Members to read company data."""
+    if not current_user.enterprise_id:
+        raise HTTPException(400, "No enterprise linked to this account.")
+    ent = await db.scalar(
+        select(Enterprise).where(Enterprise.id == current_user.enterprise_id)
+    )
+    if not ent:
+        raise HTTPException(404, "Enterprise not found.")
+    if ent.status != EnterpriseStatus.ACTIVE:
+        raise HTTPException(403, f"Enterprise is not active ({ent.status.value}).")
+    return ent
+
+
 async def _get_member_or_404(
     db: AsyncSession, enterprise_id: int, user_id: int
 ) -> User:
@@ -688,7 +706,7 @@ async def upload_company_playbook(
 
 @router.get("/playbooks")
 async def list_playbooks(
-    ent: Enterprise = Depends(get_admin_enterprise),
+    ent: Enterprise = Depends(get_enterprise_user), # ✅ Changed from get_admin_enterprise
     db: AsyncSession = Depends(get_db),
 ):
     rows = (await db.execute(
