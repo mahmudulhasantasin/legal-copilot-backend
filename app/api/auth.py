@@ -27,7 +27,7 @@ from app.services.email_service import send_otp_email, send_password_reset_email
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
-SIGNUP_BONUS_CREDITS = 50
+SIGNUP_BONUS_CREDITS = 100
 OTP_EXPIRY_MINUTES = 5
 
 # ✅ BUG B FIX: backend LawyerStatus → frontend verification_status

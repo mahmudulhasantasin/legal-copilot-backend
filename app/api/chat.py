@@ -459,7 +459,7 @@ DETAILED CLAUSES ANALYSIS:
     db.add(user_msg)
     db.add(assistant_msg)
     
-    session.message_count += 2
+    session.message_count += 1
     session.last_message_at = datetime.now(timezone.utc)
     session.auto_close_at = datetime.now(timezone.utc) + timedelta(days=7)
     

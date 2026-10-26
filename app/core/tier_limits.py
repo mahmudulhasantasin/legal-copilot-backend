@@ -10,9 +10,9 @@ if TYPE_CHECKING:
 
 TIER_LIMITS: Dict[str, Dict[str, Any]] = {
     "FREE": {
-        "active_sessions": 3,
-        "messages_per_session": 5,
-        "monthly_total_chats": 15,
+        "active_sessions": 5,
+        "messages_per_session": 8,
+        "monthly_total_chats": 50,
         "rolling_summary": False,
     },
     "PRO": {
