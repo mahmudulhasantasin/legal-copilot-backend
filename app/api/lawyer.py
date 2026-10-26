@@ -1,13 +1,17 @@
 import logging
+import os        # ✅ NEW
+import uuid      # ✅ NEW
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, UploadFile, File # ✅ NEW
 from pydantic import BaseModel, Field
 from sqlalchemy import select, desc, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from supabase import create_client # ✅ NEW
 
+from app.config import settings # ✅ NEW
 from app.core.database import get_db
 from app.core.security import get_current_user, require_roles
 from app.core.tier_limits import CONTRACT_REVIEW_LIMITS
@@ -161,6 +165,41 @@ async def get_my_active_tasks(lawyer: LawyerProfile = Depends(get_current_lawyer
         }
         for memo, contract in rows
     ]
+
+# ✅ NEW: Upload proof endpoint
+@router.post("/upload-proof")
+async def upload_lawyer_proof(
+    file: UploadFile = File(...),
+    lawyer: LawyerProfile = Depends(get_current_lawyer),
+):
+    """
+    Uploads a signature image or signed PDF to Supabase.
+    Returns the storage path to be used in submit_review.
+    """
+    SUPABASE_URL = getattr(settings, "SUPABASE_URL", "")
+    SUPABASE_KEY = getattr(settings, "SUPABASE_SERVICE_KEY", "")
+    BUCKET_NAME = "contracts"
+
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise HTTPException(500, "Storage not configured")
+
+    ext = os.path.splitext(file.filename)[1].lower()
+    file_bytes = await file.read()
+    
+    # Save as: proof/lawyer_{id}_{uuid}.ext
+    safe_name = f"proof/lawyer_{lawyer.id}_{uuid.uuid4().hex[:8]}{ext}"
+
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        supabase.storage.from_(BUCKET_NAME).upload(
+            path=safe_name,
+            file=file_bytes,
+            file_options={"content-type": file.content_type}
+        )
+        return {"status": "success", "file_path": safe_name}
+    except Exception as e:
+        logger.error(f"[Supabase] Proof upload failed: {e}")
+        raise HTTPException(500, "Failed to upload proof file")
 
 @router.post("/active/{memo_id}/submit")
 async def submit_review(
