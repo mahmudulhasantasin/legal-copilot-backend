@@ -1,4 +1,5 @@
 import logging
+import asyncio  # ✅ নতুন ইমপোর্ট (Render Port Binding Fix)
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,12 +49,28 @@ async def lifespan(app: FastAPI):
     Starts the background scheduler for HITL SLAs and payment expiries.
     """
     logger.info("Starting ContractMind API...")
-    start_scheduler()
+    
+    # ✅ FIX: Render Port Binding & Event Loop Blocking Fix
+    # We run the scheduler in a background task after a 5-second delay.
+    # This allows Uvicorn to bind to Render's dynamic $PORT first.
+    async def start_cron_safely():
+        await asyncio.sleep(5) 
+        try:
+            start_scheduler()
+            logger.info("✅ Background Cron Scheduler started successfully.")
+        except Exception as e:
+            logger.error(f"❌ Failed to start scheduler: {e}")
+
+    asyncio.create_task(start_cron_safely())
     
     yield  # Application is running
     
     logger.info("Shutting down ContractMind API...")
-    shutdown_scheduler()
+    try:
+        shutdown_scheduler()
+        logger.info("🛑 Background Cron Scheduler stopped.")
+    except Exception as e:
+        logger.error(f"Error during scheduler shutdown: {e}")
 
 
 # ──────────────────────────────────────────────────────────
