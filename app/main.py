@@ -19,6 +19,7 @@ from app.api import (
     chat,
     contract,
     settings,
+    platform,  
 )
 
 # ── Import Database & Services ──
@@ -117,6 +118,9 @@ app.include_router(contract.router)
 
 # User Settings
 app.include_router(settings.router)
+
+# ✅ Platform Metrics, Architecture & Pitch Deck (NEW)
+app.include_router(platform.router)
 
 
 # ──────────────────────────────────────────────────────────

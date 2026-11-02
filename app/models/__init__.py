@@ -74,6 +74,9 @@ from app.models.chat import (
     MessageRole,
 )
 
+# 7. Metrics (independent event log)  <-- ✅ নতুন যোগ করা হলো
+from app.models.metrics import MetricEvent
+
 
 # ──────────────────────────────────────────────────────────
 # PUBLIC API
@@ -128,4 +131,7 @@ __all__ = [
     "ChatMessage",
     "ChatMode",
     "MessageRole",
+
+    # ── Metrics ── <-- ✅ নতুন যোগ করা হলো
+    "MetricEvent",
 ]

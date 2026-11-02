@@ -25,6 +25,7 @@ from app.models.memo import ContractMemo, Contract, HITLStatus
 from app.agents.qa_graph import qa_graph
 from app.services.llm_provider import get_llm
 from app.services.verifier import verifier 
+from app.services.metrics import track_event, timed_event # ✅ নতুন ইমপোর্ট
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["Legal Chat"])
@@ -422,7 +423,15 @@ DETAILED CLAUSES ANALYSIS:
     }
 
     try:
-        graph_output = await qa_graph.ainvoke(initial_state)
+        # ✅ METRICS: Track Latency of the entire LangGraph execution
+        async with timed_event(
+            db, "chat_query",
+            user_id=current_user.id,
+            entity_id=session.id,
+            event_data={"mode": session.session_mode, "lang": lang},
+            commit=False,  # Will be committed with messages below
+        ):
+            graph_output = await qa_graph.ainvoke(initial_state)
     except Exception as exc:
         logger.exception(f"Error processing query: {exc}")
         raise HTTPException(500, "An error occurred while generating the response.")
@@ -438,6 +447,22 @@ DETAILED CLAUSES ANALYSIS:
         raw_answer, 
         retrieved_docs
     )
+
+    # ✅ METRICS: Track Citation Verification
+    if structured_response_json:
+        for sec in (structured_response_json.get("cited_sections") or []):
+            # A citation is "valid" if it survived _format_agent_output's filter
+            was_verified = any(
+                c.act == sec.get("act") and c.section_number == sec.get("section")
+                for c in structured_res.cited_sections
+            )
+            await track_event(
+                db, "citation_checked",
+                user_id=current_user.id,
+                entity_id=session.id,
+                success=was_verified,
+                commit=False,
+            )
 
     # 8. Save Messages & Update Session
     user_msg = ChatMessage(

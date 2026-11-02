@@ -23,6 +23,7 @@ from app.models.playbook import CompanyPlaybook
 from app.services.ingestion import extract_text_from_file
 from app.agents.contract_graph import analyze_contract_risk_async
 from app.services.lawyer_assignment import generate_initial_offer
+from app.services.metrics import track_event, timed_event # ✅ নতুন ইমপোর্ট
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/contracts", tags=["Contract Audit & HITL"])
@@ -176,10 +177,17 @@ async def upload_and_audit(
         if pb and pb.rules_json:
             playbook_rules = pb.rules_json
 
-    agent_output = await analyze_contract_risk_async(
-        contract_text=raw_text[:30000],
-        playbook_rules=playbook_rules
-    )
+    # ✅ METRICS: Track Audit Latency
+    async with timed_event(
+        db, "audit_completed",
+        user_id=current_user.id,
+        event_data={"file_ext": ext, "has_playbook": bool(playbook_rules)},
+        commit=False
+    ):
+        agent_output = await analyze_contract_risk_async(
+            contract_text=raw_text[:30000],
+            playbook_rules=playbook_rules
+        )
 
     detected_risks = agent_output.get("detected_risks", [])
     memo_summary = agent_output.get("memo_summary", "Contract analyzed successfully.")
@@ -249,6 +257,18 @@ async def upload_and_audit(
         hitl_status=HITLStatus.NOT_REQUESTED
     )
     db.add(memo)
+
+    # ✅ METRICS: Track Audit Quality (Risk Score & Counts)
+    await track_event(
+        db, "audit_quality",
+        user_id=current_user.id,
+        event_data={
+            "risk_score": risk_score,
+            "high_risk_count": counts["high_risk"],
+            "overall_risk": risk_enum.value
+        },
+        commit=False
+    )
 
     await db.commit()
     await db.refresh(contract)
@@ -331,6 +351,15 @@ async def request_lawyer_verification(
         memo.refund_reason = "No eligible lawyers available at this time."
         await db.commit()
         raise HTTPException(503, "No lawyers are currently available. Your credits have been refunded.")
+
+    # ✅ METRICS: Track HITL Request
+    await track_event(
+        db, "hitl_requested",
+        user_id=current_user.id,
+        entity_id=memo.id,
+        event_data={"credits_paid": cost_credits},
+        commit=False
+    )
 
     await db.commit()
 

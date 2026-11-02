@@ -26,6 +26,7 @@ from app.services.email_service import (
     send_client_lawyer_assigned_email,
     send_client_verification_complete_email,
 )
+from app.services.metrics import track_event # ✅ নতুন ইমপোর্ট
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/lawyer", tags=["Lawyer HITL"])
@@ -122,6 +123,14 @@ async def accept_offer(
     memo.assigned_at = now
     memo.submit_deadline = now + timedelta(hours=3)
     memo.hitl_current_offer_id = None
+
+    # ✅ METRICS: Track HITL Acceptance
+    await track_event(
+        db, "hitl_accepted",
+        user_id=lawyer.user_id,
+        entity_id=memo.id,
+        commit=False
+    )
 
     await db.commit()
 
@@ -242,6 +251,15 @@ async def submit_review(
         description=f"Earned ৳{payout} for verifying Memo #{memo.id}", reference_id=str(memo.id),
     ))
 
+    # ✅ METRICS: Track HITL Completion
+    await track_event(
+        db, "hitl_completed",
+        user_id=lawyer.user_id,
+        entity_id=memo.id,
+        event_data={"earned_bdt": float(payout)},
+        commit=False
+    )
+
     await db.commit()
 
     # ✅ Queue Client Email
@@ -318,7 +336,7 @@ async def list_my_withdrawals(lawyer: LawyerProfile = Depends(get_current_lawyer
     stmt = select(WithdrawalRequest).where(WithdrawalRequest.lawyer_id == lawyer.id).order_by(desc(WithdrawalRequest.requested_at)).limit(20)
     rows = (await db.execute(stmt)).scalars().all()
     
-    # ✅ FIX: লিস্ট কম্প্রিহেনশনের বদলে লুপ ব্যবহার করা হলো যাতে কোনো সিনট্যাক্স এরর না আসে
+    #  FIX: লিস্ট কম্প্রিহেনশনের বদলে লুপ ব্যবহার করা হলো যাতে কোনো সিনট্যাক্স এরর না আসে
     result = []
     for w in rows:
         result.append({
