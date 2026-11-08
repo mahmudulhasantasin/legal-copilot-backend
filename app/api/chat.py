@@ -52,6 +52,7 @@ class StructuredLegalResponse(BaseModel):
     cited_sections: List[CitedSectionDetail] = Field(default_factory=list)
     cited_cases: List[CitedCaseDetail] = Field(default_factory=list) 
     suggested_next_steps: List[str] = Field(default_factory=list)
+    suggested_follow_ups: List[str] = Field(default_factory=list)
     needs_clarification: bool = False 
 
 class CreateSessionRequest(BaseModel):
@@ -87,12 +88,14 @@ async def _format_agent_output(structured_response: dict, raw_answer: str, retri
             cited_sections=[],
             cited_cases=[],
             suggested_next_steps=[],
+            suggested_follow_ups=[],
             needs_clarification=False
         )
 
     answer_text = structured_response.get("detailed_answer") or raw_answer
     needs_clarification = structured_response.get("needs_clarification", False)
     next_steps = structured_response.get("suggested_next_steps", [])
+    follow_ups = structured_response.get("suggested_follow_ups", [])
     raw_sections = structured_response.get("cited_sections", [])
     raw_cases = structured_response.get("cited_cases", [])
 
@@ -139,6 +142,7 @@ async def _format_agent_output(structured_response: dict, raw_answer: str, retri
         cited_sections=final_sections,
         cited_cases=final_cases,
         suggested_next_steps=next_steps,
+        suggested_follow_ups=follow_ups,
         needs_clarification=needs_clarification
     )
 

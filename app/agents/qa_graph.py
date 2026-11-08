@@ -346,11 +346,50 @@ async def generate_answer_node(state: QAState) -> dict:
         
     context_text = "\n\n---\n\n".join(context_sections)
 
+    user_role = (state.get("user_role") or "GENERAL").upper()
+
+    # Dynamic persona and depth guidance based on user role
+    if user_role in ("LAWYER", "LAWYER_RESEARCH"):
+        role_guidance = (
+            "USER PROFILE: Legal Professional / Advocate.\n"
+            "- Provide deep procedural rigor (referencing CPC/CrPC/Limitation Act rules where applicable).\n"
+            "- Mention relevant High Court Division / Appellate Division doctrines and statutory interpretations.\n"
+            "- Maintain professional advocate-grade depth and analytical precision."
+        )
+    elif user_role in ("ENTERPRISE", "ENTERPRISE_MEMBER"):
+        role_guidance = (
+            "USER PROFILE: Corporate Enterprise / In-House Legal Team.\n"
+            "- Highlight commercial risk exposures, corporate liability, director/officer responsibility, and contractual mitigation.\n"
+            "- Focus on statutory compliance, dispute resolution alternatives (Arbitration Act 2001), and financial implications."
+        )
+    else:
+        role_guidance = (
+            "USER PROFILE: General Citizen / Business Owner.\n"
+            "- Use accessible, empathetic, and clear Bengali (or English if queried in English).\n"
+            "- Demystify complex legal terms and provide concrete, reassuring practical guidance."
+        )
+
+    # Dynamic conversation state guidance
+    if history_messages and len(history_messages) >= 2:
+        conversation_guidance = (
+            "CONVERSATION STATE: Ongoing follow-up conversation.\n"
+            "- Do NOT repeat introductory pleasantries, greetings, or generic legal disclaimers.\n"
+            "- Directly build upon prior conversation context and answer the latest follow-up naturally and seamlessly."
+        )
+    else:
+        conversation_guidance = (
+            "CONVERSATION STATE: Fresh legal query.\n"
+            "- Provide a clear, authoritative, and helpful orientation."
+        )
+
     user_prompt = (
         f"{context_text}\n\n"
         f"================================\n"
+        f"{role_guidance}\n\n"
+        f"{conversation_guidance}\n\n"
+        f"================================\n"
         f"Client Legal Query:\n{query}\n\n"
-        f"Instructions: Provide a well-structured, clear, and accurate response based strictly on the verified context above. Return strictly a JSON object."
+        f"Instructions: Provide an adaptive, well-structured, dynamic, and accurate response based strictly on the verified context above. Return strictly a JSON object matching the required schema."
     )
 
     try:
@@ -371,6 +410,7 @@ async def generate_answer_node(state: QAState) -> dict:
         
         if parsed_json and "detailed_answer" in parsed_json:
             final_text = parsed_json.get("detailed_answer", "")
+            parsed_json.setdefault("suggested_follow_ups", [])
         else:
             # ✅ ULTIMATE FALLBACK: If JSON is broken or incomplete (due to max_tokens limit), 
             # extract only the text part using regex
@@ -394,7 +434,8 @@ async def generate_answer_node(state: QAState) -> dict:
                 "detailed_answer": final_text,
                 "cited_sections": [],
                 "cited_cases": [],
-                "suggested_next_steps": []
+                "suggested_next_steps": [],
+                "suggested_follow_ups": []
             }
 
         if not final_text:
