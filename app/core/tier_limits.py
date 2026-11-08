@@ -11,31 +11,31 @@ if TYPE_CHECKING:
 TIER_LIMITS: Dict[str, Dict[str, Any]] = {
     "FREE": {
         "active_sessions": 5,
-        "messages_per_session": 8,
+        "messages_per_session": 10,
         "monthly_total_chats": 50,
         "rolling_summary": False,
     },
     "PRO": {
-        "active_sessions": 20,
-        "messages_per_session": 20,
-        "monthly_total_chats": 200,
+        "active_sessions": 15,
+        "messages_per_session": 25,
+        "monthly_total_chats": 150,
         "rolling_summary": True,
     },
     "ENTERPRISE_MEMBER": {
-        "active_sessions": 40,
+        "active_sessions": 30,
         "messages_per_session": 40,
-        "monthly_total_chats": 1000,
+        "monthly_total_chats": 300,
         "rolling_summary": True,
     },
     "LAWYER": {
         "active_sessions": 20,
-        "messages_per_session": 20,
-        "monthly_total_chats": None,
+        "messages_per_session": 25,
+        "monthly_total_chats": 80,
         "rolling_summary": True,
     },
     "ADMIN": {
         "active_sessions": 200000,
-        "messages_per_session":200000,
+        "messages_per_session": 200000,
         "monthly_total_chats": None,
         "rolling_summary": True,
     },
@@ -43,11 +43,11 @@ TIER_LIMITS: Dict[str, Dict[str, Any]] = {
 
 CONTRACT_REVIEW_LIMITS: Dict[str, int] = {
     "max_sessions_per_contract": 3,
-    "messages_per_session": 10,
+    "messages_per_session": 15,
     "total_messages_per_contract": 30,
 }
 
-LAWYER_MONTHLY_FREE_CHAT_CREDITS = 100
+LAWYER_MONTHLY_FREE_CHAT_CREDITS = 50
 
 
 # ──────────────────────────────────────────────────────────

@@ -198,8 +198,14 @@ async def extract_text_from_file(filename: str, content: bytes) -> str:
             f.write(content)
 
         if ext in [".docx", ".doc"]:
-            doc = docx.Document(temp_file_path)
-            return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+            try:
+                doc = docx.Document(temp_file_path)
+                return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+            except Exception:
+                raise ValueError(
+                    "Legacy Word 97-2003 (.doc) binary format cannot be read directly. "
+                    "Please save or export the document as .docx or .pdf and re-upload."
+                )
 
         if ext == ".pdf":
             reader = PdfReader(temp_file_path)
@@ -214,6 +220,10 @@ async def extract_text_from_file(filename: str, content: bytes) -> str:
                 return raw
 
             chunks = await doc_processor.process_pdf_with_ocr(temp_file_path)
+            return "\n\n".join(chunks)
+
+        if ext in [".png", ".jpg", ".jpeg", ".webp"]:
+            chunks = await doc_processor.process_file(temp_file_path)
             return "\n\n".join(chunks)
 
         raise ValueError(f"Unsupported file format: {ext}")

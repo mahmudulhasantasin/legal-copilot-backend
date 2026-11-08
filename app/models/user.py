@@ -180,7 +180,8 @@ class User(Base):
 
     @property
     def monthly_free_chat_remaining(self) -> int:
-        return max(0, 100 - self.monthly_free_chat_used)
+        from app.core.tier_limits import LAWYER_MONTHLY_FREE_CHAT_CREDITS
+        return max(0, LAWYER_MONTHLY_FREE_CHAT_CREDITS - self.monthly_free_chat_used)
 
     @property
     def is_enterprise_user(self) -> bool:

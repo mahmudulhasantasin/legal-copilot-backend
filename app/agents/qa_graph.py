@@ -10,6 +10,7 @@ from langgraph.graph import END, StateGraph
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
+from app.config import settings
 from app.agents.prompts import SYSTEM_QA_PROMPT
 from app.agents.state import QAState
 from app.services.llm_provider import get_llm
@@ -108,7 +109,7 @@ async def call_remote_mcp_tool(tool_name: str, arguments: dict) -> dict:
     Sends a request to the standalone MCP server on Render using the official MCP Client.
     Handles handshake (initialize) and session IDs automatically — no more 400 Bad Request.
     """
-    MCP_URL = "https://bd-legal-mcp-server.onrender.com/mcp"
+    MCP_URL = getattr(settings, "MCP_SERVER_URL", "https://bd-legal-mcp-server.onrender.com/mcp")
 
     try:
         async with streamablehttp_client(MCP_URL) as (read_stream, write_stream, _):

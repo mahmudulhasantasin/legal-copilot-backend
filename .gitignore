@@ -100,3 +100,12 @@ update_db.py
 setup_qdrant.py
 test.py
 data/laws/all_bangladesh_laws.json
+
+# ==========================================
+# Agent, Audits & Local Context
+# ==========================================
+SECURITY_AUDIT_REPORT.md
+*_AUDIT_REPORT.md
+.context-engine/
+.agents/
+AGENTS.md

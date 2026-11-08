@@ -41,6 +41,7 @@ class Settings(BaseSettings):
 
     # ✅ bKash Payment Config (পেমেন্টের সময় এই নম্বরটি দেখানো হবে)
     BKASH_MERCHANT_NUMBER: str = os.getenv("BKASH_MERCHANT_NUMBER", "01700000000")
+    MCP_SERVER_URL: str = os.getenv("MCP_SERVER_URL", "https://bd-legal-mcp-server.onrender.com/mcp")
 
     # ✅ Pydantic V2 এর নতুন কনফিগারেশন
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -65,3 +66,4 @@ BKASH_MERCHANT_NUMBER = settings.BKASH_MERCHANT_NUMBER
 
 # ✅ Tavily Direct Export (প্রয়োজন হলে)
 TAVILY_API_KEY = settings.TAVILY_API_KEY
+MCP_SERVER_URL = settings.MCP_SERVER_URL

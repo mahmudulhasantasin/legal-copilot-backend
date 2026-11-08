@@ -16,6 +16,7 @@ from app.core.tier_limits import (
     get_tier_key, 
     get_session_limit, 
     get_max_active_sessions,
+    get_monthly_chat_cap,
     should_generate_summary
 )
 from app.models.user import User, UserRole, CreditTxType
@@ -193,16 +194,21 @@ async def create_session(
 
     max_sessions = get_max_active_sessions(current_user)
     if max_sessions != -1:
+        now = datetime.now(timezone.utc)
+        first_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         active_count = (await db.execute(
             select(func.count(ChatSession.id)).where(
                 ChatSession.user_id == current_user.id,
-                ChatSession.is_closed == False,
+                ChatSession.created_at >= first_of_month,
                 ChatSession.session_mode != ChatMode.CONTRACT_REVIEW.value
             )
         )).scalar_one()
         
         if active_count >= max_sessions:
-            raise HTTPException(403, f"You have reached the maximum of {max_sessions} active sessions.")
+            raise HTTPException(
+                status_code=403,
+                detail=f"You have reached your monthly limit of {max_sessions} sessions. Closing or deleting chats does not restore this quota. Quota resets on the 1st of next month."
+            )
 
     scoped_contract_id = None
     if payload.mode == ChatMode.USER_CONTRACT.value:
@@ -343,6 +349,27 @@ async def process_chat_query(
             status_code=403,
             detail=f"Session limit reached ({session.session_limit} messages). Please start a new session."
         )
+
+    # 1.1 Check Monthly Chat Cap
+    monthly_cap = get_monthly_chat_cap(current_user)
+    if monthly_cap is not None:
+        now = datetime.now(timezone.utc)
+        first_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        monthly_queries = (await db.execute(
+            select(func.count(ChatMessage.id))
+            .join(ChatSession, ChatMessage.session_id == ChatSession.id)
+            .where(
+                ChatSession.user_id == current_user.id,
+                ChatMessage.role == "user",
+                ChatMessage.created_at >= first_of_month,
+            )
+        )).scalar_one()
+
+        if monthly_queries >= monthly_cap:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Monthly chat limit reached ({monthly_cap} queries). Your quota will reset on the 1st of next month."
+            )
 
     # 2. Context-specific validation
     contract_context = ""

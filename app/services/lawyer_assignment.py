@@ -137,10 +137,13 @@ async def process_sla_breaches(db: AsyncSession):
         logger.warning(f"[HITL] SLA Breached for Memo #{memo.id}. Refunding client.")
         contract = await db.scalar(select(Contract).where(Contract.id == memo.contract_id))
         if contract:
-            await refund_credits(
-                db=db, user=None, amount=memo.hitl_credits_paid,
-                reason=f"Auto-refund: SLA breached for Memo #{memo.id}", reference_id=str(memo.id)
-            )
+            client_user = await db.scalar(select(User).where(User.id == contract.user_id))
+            if client_user:
+                await refund_credits(
+                    db=db, user=client_user, amount=memo.hitl_credits_paid,
+                    reason=f"Auto-refund: SLA breached for Memo #{memo.id}", reference_id=str(memo.id),
+                    enterprise_id=contract.enterprise_id if client_user.is_enterprise_user else None,
+                )
         memo.hitl_status = HITLStatus.REFUNDED
         memo.refunded_at = now
         memo.refund_reason = "SLA deadline (3 days) breached."

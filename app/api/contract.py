@@ -85,12 +85,13 @@ class RequestVerificationResponse(BaseModel):
 # HELPERS
 # ──────────────────────────────────────────────────────────
 
-def _calculate_metrics(clauses: List[dict]) -> tuple[Dict[str, int], int, RiskLevel]:
+def _calculate_metrics(clauses: List[dict], total_clauses_count: Optional[int] = None) -> tuple[Dict[str, int], int, RiskLevel]:
     high = sum(1 for c in clauses if str(c.get("risk_level", "")).lower() in ["high risk", "high"])
     review = sum(1 for c in clauses if str(c.get("risk_level", "")).lower() in ["review needed", "moderate", "medium"])
     compliant = sum(1 for c in clauses if c.get("is_compliant") or str(c.get("risk_level", "")).lower() in ["compliant", "low"])
 
-    total = max(len(clauses), 1)
+    # Incorporate estimated total clauses so score denominator accurately reflects compliant clauses
+    total = max(len(clauses), total_clauses_count or 0, 1)
     score = min(100, int((high * 40 + review * 20) / total * 2.5))
     score = max(score, 10 if total > 0 else 0)
 
@@ -101,7 +102,8 @@ def _calculate_metrics(clauses: List[dict]) -> tuple[Dict[str, int], int, RiskLe
     else:
         overall = RiskLevel.LOW
 
-    return {"high_risk": high, "review_needed": review, "compliant": compliant}, score, overall
+    effective_compliant = max(compliant, total - high - review)
+    return {"high_risk": high, "review_needed": review, "compliant": effective_compliant}, score, overall
 
 
 async def _upload_to_supabase(file_bytes: bytes, filename: str, user_id: int, content_type: str) -> str:
@@ -137,10 +139,22 @@ async def upload_and_audit(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    allowed_types = [".pdf", ".docx", ".doc", ".png", ".jpg", ".jpeg"]
+    allowed_types = [".pdf", ".docx", ".doc", ".png", ".jpg", ".jpeg", ".txt"]
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in allowed_types:
         raise HTTPException(400, f"Unsupported file format. Allowed: {', '.join(allowed_types)}")
+
+    MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
+
+    # ফাইল সাইস চেক — credit deduct হওয়ার আগে
+    file_bytes = await file.read()
+    if len(file_bytes) == 0:
+        raise HTTPException(400, "The uploaded file is empty.")
+    if len(file_bytes) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Max 20MB allowed. Your file: {round(len(file_bytes)/(1024*1024),1)}MB."
+        )
 
     cost = get_audit_cost(current_user.role)
     deduction = await check_and_deduct_credits(
@@ -152,13 +166,14 @@ async def upload_and_audit(
         commit=False
     )
 
-    file_bytes = await file.read()
     storage_path = await _upload_to_supabase(
         file_bytes, file.filename, current_user.id, file.content_type
     )
 
     try:
         raw_text = await extract_text_from_file(file.filename, file_bytes)
+    except ValueError as ve:
+        raise HTTPException(400, str(ve))
     except Exception as e:
         logger.error(f"[Ingestion] Extraction failed: {e}")
         raise HTTPException(400, "Could not read text from the uploaded file.")
@@ -185,7 +200,7 @@ async def upload_and_audit(
         commit=False
     ):
         agent_output = await analyze_contract_risk_async(
-            contract_text=raw_text[:30000],
+            contract_text=raw_text,  # CONTRACT_TEXT_LIMIT is applied inside contract_graph.py
             playbook_rules=playbook_rules
         )
 
@@ -227,7 +242,8 @@ async def upload_and_audit(
             "is_compliant": True
         })
 
-    counts, risk_score, risk_enum = _calculate_metrics(ui_clauses)
+    estimated_total = agent_output.get("estimated_total_clauses") or len(ui_clauses)
+    counts, risk_score, risk_enum = _calculate_metrics(ui_clauses, total_clauses_count=estimated_total)
 
     contract = Contract(
         user_id=current_user.id,
