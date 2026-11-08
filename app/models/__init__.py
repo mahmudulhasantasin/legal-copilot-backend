@@ -77,6 +77,12 @@ from app.models.chat import (
 # 7. Metrics (independent event log)  <-- ✅ নতুন যোগ করা হলো
 from app.models.metrics import MetricEvent
 
+# 8. Inquiries & Feedback (independent public forms)
+from app.models.inquiry import (
+    FeedbackSuggestion,
+    NewsletterSubscriber,
+)
+
 
 # ──────────────────────────────────────────────────────────
 # PUBLIC API
@@ -134,4 +140,8 @@ __all__ = [
 
     # ── Metrics ── <-- ✅ নতুন যোগ করা হলো
     "MetricEvent",
+
+    # ── Inquiries ──
+    "FeedbackSuggestion",
+    "NewsletterSubscriber",
 ]

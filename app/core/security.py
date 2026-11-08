@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 bearer_scheme = HTTPBearer()
+optional_bearer = HTTPBearer(auto_error=False)
 
 
 # ──────────────────────────────────────────────────────────
@@ -115,6 +116,26 @@ async def get_current_user(
         )
 
     return user
+
+
+async def get_current_user_optional(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_bearer),
+    db: AsyncSession = Depends(get_db),
+) -> Optional["User"]:
+    """Optional authentication: returns User if valid JWT is present, else None."""
+    if not credentials:
+        return None
+    try:
+        from app.models.user import User
+        token = credentials.credentials
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        email: str = payload.get("sub")
+        if not email:
+            return None
+        stmt = select(User).where(User.email == email, User.is_deleted == False)
+        return (await db.execute(stmt)).scalar_one_or_none()
+    except Exception:
+        return None
 
 
 def require_roles(allowed_roles: list):

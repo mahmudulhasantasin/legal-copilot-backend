@@ -20,7 +20,8 @@ from app.api import (
     chat,
     contract,
     settings,
-    platform,  
+    platform,
+    inquiries,
 )
 
 # ── Import Database & Services ──
@@ -60,6 +61,15 @@ async def lifespan(app: FastAPI):
             logger.info("✅ Background Cron Scheduler started successfully.")
         except Exception as e:
             logger.error(f"❌ Failed to start scheduler: {e}")
+
+    # Ensure new tables (e.g. feedback_suggestions, newsletter_subscribers) are created
+    try:
+        from app.core.database import engine, Base
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("✅ Database tables verified/initialized.")
+    except Exception as db_err:
+        logger.warning(f"Database schema auto-sync note: {db_err}")
 
     asyncio.create_task(start_cron_safely())
     
@@ -138,6 +148,7 @@ app.include_router(settings.router)
 
 # ✅ Platform Metrics, Architecture & Pitch Deck (NEW)
 app.include_router(platform.router)
+app.include_router(inquiries.router)
 
 
 # ──────────────────────────────────────────────────────────
