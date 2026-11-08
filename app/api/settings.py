@@ -74,8 +74,11 @@ class ProfileUpdatePayload(BaseModel):
     phone: Optional[str] = Field(default=None, max_length=20)
 
 class PasswordChangePayload(BaseModel):
-    current_password: str
-    new_password: str = Field(min_length=6)
+    current_password: Optional[str] = None
+    new_password: str = Field(min_length=6, max_length=128)
+
+class SetPasswordPayload(BaseModel):
+    new_password: str = Field(min_length=6, max_length=128)
 
 class LawyerPreferencesPayload(BaseModel):
     specializations: Optional[List[str]] = None
@@ -218,15 +221,32 @@ async def upload_profile_photo(
 # CHANGE PASSWORD
 # ──────────────────────────────────────────────────────────
 
+@router.post("/set-password")
+async def set_password_for_oauth(
+    payload: SetPasswordPayload,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Allows authenticated Google/OAuth users to set an email login password directly."""
+    current_user.hashed_password = get_password_hash(payload.new_password)
+    await db.commit()
+    return {
+        "status": "success",
+        "message": "Password set successfully. You can now log in using both Google and email/password.",
+    }
+
+
 @router.post("/change-password")
 async def change_password(
     payload: PasswordChangePayload,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Verify old password and set new one."""
-    if not verify_password(payload.current_password, current_user.hashed_password):
-        raise HTTPException(400, "Current password is incorrect.")
+    """Verify old password and set new one. Allows OAuth users without password to set directly."""
+    is_google_no_pw = (current_user.hashed_password or "").startswith("GOOGLE_UNSET$")
+    if not is_google_no_pw:
+        if not payload.current_password or not verify_password(payload.current_password, current_user.hashed_password):
+            raise HTTPException(400, "Current password is incorrect.")
 
     current_user.hashed_password = get_password_hash(payload.new_password)
     await db.commit()
