@@ -419,6 +419,12 @@ async def get_my_contracts(
             "overall_risk": m.overall_risk.value,
             "risk_score": m.risk_score,
             "hitl_status": m.hitl_status.value,
+            "high_risk_count": m.high_risk_count,
+            "moderate_risk_count": m.moderate_risk_count,
+            "medium_risk_count": m.moderate_risk_count,
+            "compliant_count": m.compliant_count,
+            "executive_summary": m.executive_summary,
+            "summary": m.executive_summary,
             "created_at": c.created_at,
             "is_workspace_shared": c.is_workspace_shared  # ✅ Returns True only for enterprise audits
         }
