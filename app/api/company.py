@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, BackgroundTasks
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +17,7 @@ from app.models.playbook import Enterprise, EnterpriseStatus, CompanyPlaybook
 from app.models.memo import Contract, ContractMemo
 from app.models.audit import AuditLog, AuditAction, AuditSeverity
 from app.services.playbook_parser import extract_text_from_file, parse_playbook_to_rules
+from app.services.email_service import send_member_approved_email, send_member_rejected_email
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/company", tags=["Enterprise Admin"])
@@ -328,6 +329,7 @@ async def get_member_detail(
 async def approve_member(
     user_id: int,
     payload: ApproveMemberRequest,
+    background_tasks: BackgroundTasks,
     ent: Enterprise = Depends(get_admin_enterprise),
     admin: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -388,6 +390,14 @@ async def approve_member(
             "quota": member.member_credit_quota,
         },
     )
+    background_tasks.add_task(
+        send_member_approved_email,
+        member.email,
+        member.full_name or "Team Member",
+        ent.name,
+        payload.company_role.value if payload.company_role else "Member",
+    )
+
     await db.commit()
     return {"status": "success", "user_id": member.id}
 
@@ -396,6 +406,7 @@ async def approve_member(
 async def reject_member(
     user_id: int,
     payload: RejectMemberRequest,
+    background_tasks: BackgroundTasks,
     ent: Enterprise = Depends(get_admin_enterprise),
     admin: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -408,6 +419,14 @@ async def reject_member(
     member.member_approval_status = MemberApprovalStatus.REJECTED
     member.enterprise_id = None
     member.company_role = None
+
+    background_tasks.add_task(
+        send_member_rejected_email,
+        member.email,
+        member.full_name or "Team Member",
+        ent.name,
+        payload.reason,
+    )
 
     await _log_company_action(
         db, admin, AuditAction.MEMBER_REJECTED,

@@ -285,6 +285,64 @@ async def send_lawyer_approved_email(recipient_email: str, full_name: str) -> bo
     )
     return await _send_email(recipient_email, subject, body)
 
+async def send_lawyer_rejected_email(recipient_email: str, full_name: str, reason: str) -> bool:
+    subject = "Update on Your Lawyer Application - ContractMind"
+    body = (
+        f"Dear {full_name},\n\n"
+        f"Thank you for your application to join ContractMind as a verified lawyer.\n\n"
+        f"After reviewing your credentials, we regret to inform you that your application could not be approved at this time.\n\n"
+        f"Reason for rejection:\n{reason}\n\n"
+        f"If you believe this decision was made in error or have updated credentials to provide, please contact our support team.\n\n"
+        f"- ContractMind Team"
+    )
+    return await _send_email(recipient_email, subject, body)
+
+async def send_enterprise_approved_email(recipient_email: str, admin_name: str, company_name: str, referral_code: str) -> bool:
+    subject = f"Your Enterprise Account is Verified: {company_name}"
+    body = (
+        f"Dear {admin_name},\n\n"
+        f"Congratulations! Your enterprise registration for '{company_name}' has been verified and approved by the System Admin.\n\n"
+        f"Your organization is now active. Team members can register and join your organization using your referral code:\n\n"
+        f"  Team Referral Code: {referral_code}\n\n"
+        f"You can now access your Enterprise Admin Dashboard to approve team members, assign credit quotas, and configure company playbooks.\n\n"
+        f"- ContractMind Team"
+    )
+    return await _send_email(recipient_email, subject, body)
+
+async def send_enterprise_rejected_email(recipient_email: str, admin_name: str, company_name: str, reason: str) -> bool:
+    subject = f"Update on Your Enterprise Application: {company_name}"
+    body = (
+        f"Dear {admin_name},\n\n"
+        f"Thank you for submitting an enterprise application for '{company_name}'.\n\n"
+        f"After reviewing the company details and verification documents, we are unable to approve your enterprise account at this time.\n\n"
+        f"Reason for rejection:\n{reason}\n\n"
+        f"If you have questions or require further assistance, please contact our support team.\n\n"
+        f"- ContractMind Team"
+    )
+    return await _send_email(recipient_email, subject, body)
+
+async def send_member_approved_email(recipient_email: str, full_name: str, company_name: str, role_title: str) -> bool:
+    subject = f"Membership Approved: Welcome to {company_name} on ContractMind"
+    body = (
+        f"Dear {full_name},\n\n"
+        f"Great news! Your request to join '{company_name}' has been approved by your Company Admin.\n\n"
+        f"Assigned Role: {role_title}\n\n"
+        f"You can now log in to ContractMind and access your organization's legal copilot, shared templates, and assigned credit quota.\n\n"
+        f"- ContractMind Team"
+    )
+    return await _send_email(recipient_email, subject, body)
+
+async def send_member_rejected_email(recipient_email: str, full_name: str, company_name: str, reason: str) -> bool:
+    subject = f"Membership Request Update: {company_name}"
+    body = (
+        f"Dear {full_name},\n\n"
+        f"Your request to join '{company_name}' as a team member has been declined by the Company Admin.\n\n"
+        f"Reason:\n{reason}\n\n"
+        f"If you believe this was done in error, please contact your organization administrator.\n\n"
+        f"- ContractMind Team"
+    )
+    return await _send_email(recipient_email, subject, body)
+
 async def send_sla_refund_email(recipient_email: str, contract_title: str, credits: int) -> bool:
     subject = "Refund Processed - Verification Timeout"
     body = (

@@ -31,7 +31,12 @@ from app.models.audit import (
 )
 
 # ✅ FIX: ইমেইল সার্ভিস ইমপোর্ট করা হলো
-from app.services.email_service import send_lawyer_approved_email
+from app.services.email_service import (
+    send_lawyer_approved_email,
+    send_lawyer_rejected_email,
+    send_enterprise_approved_email,
+    send_enterprise_rejected_email,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin", tags=["System Admin"])
@@ -235,6 +240,7 @@ async def approve_lawyer(
 async def reject_lawyer(
     lawyer_id: int,
     payload: RejectRequest,
+    background_tasks: BackgroundTasks,
     admin: User = Depends(check_is_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -244,6 +250,15 @@ async def reject_lawyer(
 
     profile.status = LawyerStatus.REJECTED
     profile.rejection_reason = payload.reason
+
+    user = await db.scalar(select(User).where(User.id == profile.user_id))
+    if user:
+        background_tasks.add_task(
+            send_lawyer_rejected_email,
+            user.email,
+            user.full_name or "Counsel",
+            payload.reason
+        )
 
     await log_action(
         db, admin, AuditAction.LAWYER_REJECTED,
@@ -318,6 +333,7 @@ async def list_pending_enterprises(
 @router.post("/enterprises/{enterprise_id}/approve")
 async def approve_enterprise(
     enterprise_id: int,
+    background_tasks: BackgroundTasks,
     admin: User = Depends(check_is_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -349,6 +365,15 @@ async def approve_enterprise(
     user.company_joined_at = datetime.now(timezone.utc)
     user.is_verified = True
 
+    # Send approval email with team referral code
+    background_tasks.add_task(
+        send_enterprise_approved_email,
+        user.email,
+        user.full_name or "Admin",
+        ent.name,
+        ent.referral_code,
+    )
+
     await log_action(
         db, admin, AuditAction.ENTERPRISE_APPROVED,
         target_entity="enterprise", target_id=ent.id,
@@ -368,6 +393,7 @@ async def approve_enterprise(
 async def reject_enterprise(
     enterprise_id: int,
     payload: RejectRequest,
+    background_tasks: BackgroundTasks,
     admin: User = Depends(check_is_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -377,6 +403,17 @@ async def reject_enterprise(
 
     ent.status = EnterpriseStatus.SUSPENDED
     ent.rejection_reason = payload.reason
+
+    if ent.pending_admin_user_id:
+        user = await db.scalar(select(User).where(User.id == ent.pending_admin_user_id))
+        if user:
+            background_tasks.add_task(
+                send_enterprise_rejected_email,
+                user.email,
+                user.full_name or "Admin",
+                ent.name,
+                payload.reason,
+            )
 
     await log_action(
         db, admin, AuditAction.ENTERPRISE_REJECTED,
