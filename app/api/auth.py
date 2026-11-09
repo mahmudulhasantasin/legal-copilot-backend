@@ -38,7 +38,7 @@ from app.models.user import (
 
     User, UserRole, SubscriptionTier, CreditTransaction, 
 
-    CreditTxType, MemberApprovalStatus,
+    CreditTxType, MemberApprovalStatus, CompanyRole,
 
 )
 
@@ -1093,9 +1093,11 @@ async def onboard_as_enterprise(payload: OnboardEnterpriseRequest, current_user:
     )
 
     db.add(enterprise)
-
+    await db.flush()
+    current_user.enterprise_id = enterprise.id
+    current_user.company_role = CompanyRole.ADMIN
+    current_user.member_approval_status = MemberApprovalStatus.PENDING
     await db.commit()
-
     await db.refresh(enterprise)
 
     return {"status": "success", "message": "Enterprise registered. Awaiting system admin approval.", "referral_code": enterprise.referral_code, "enterprise_id": enterprise.id}
@@ -1185,7 +1187,10 @@ async def get_me(
     # ✅ Check if user has an enterprise application awaiting admin approval
     if not response.enterprise_profile:
         pending_enterprise = await db.scalar(
-            select(Enterprise).where(Enterprise.pending_admin_user_id == current_user.id)
+            select(Enterprise).where(
+                (Enterprise.pending_admin_user_id == current_user.id) |
+                (Enterprise.id == current_user.enterprise_id)
+            ).order_by(Enterprise.id.desc())
         )
         if pending_enterprise:
             status_str = "pending"
