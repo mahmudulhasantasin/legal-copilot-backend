@@ -857,13 +857,26 @@ async def get_user_detail(
         "phone": user.phone,
         "role": user.role.value,
         "credit_balance": user.credit_balance,
+        "member_credit_quota": user.member_credit_quota or 0,
+        "member_credit_used": user.member_credit_used or 0,
         "is_active": user.is_active,
         "is_verified": user.is_verified,
         "created_at": user.created_at,
         "profile_photo_url": user.profile_photo_url,
         "lawyer_profile": None,
-        "enterprise_id": user.enterprise_id
+        "enterprise_id": user.enterprise_id,
+        "enterprise_details": None,
     }
+
+    if user.enterprise_id:
+        ent = await db.scalar(select(Enterprise).where(Enterprise.id == user.enterprise_id))
+        if ent:
+            response["enterprise_details"] = {
+                "id": ent.id,
+                "name": ent.name,
+                "pool_balance": ent.credit_balance,
+                "member_limit": ent.member_limit,
+            }
 
     if user.role == UserRole.LAWYER:
         profile = await db.scalar(select(LawyerProfile).where(LawyerProfile.user_id == user.id))
