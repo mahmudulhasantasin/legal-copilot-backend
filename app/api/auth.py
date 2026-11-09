@@ -259,22 +259,15 @@ class LawyerInfoResponse(BaseModel):
 # ✅ NEW — nested enterprise info for frontend company name display
 
 class EnterpriseProfileResponse(BaseModel):
-
     company_name: str
-
     company_type: Optional[str] = None
-
     registration_no: Optional[str] = None
-
     tin_no: Optional[str] = None
-
     refer_code: Optional[str] = None
-
     member_limit: Optional[int] = None
-
     verification_status: str = "pending"  # "verified" | "pending" | "rejected"
-
     is_team_member: bool = False
+    member_approval_status: Optional[str] = None
 
 
 
@@ -298,11 +291,10 @@ class UserResponse(BaseModel):
 
     
 
-    # ✅ NEW: Member Quota Details (Only populated for Enterprise Member)
-
+    # ✅ NEW: Member Quota & Approval Details
     member_credit_quota: Optional[int] = None
-
     member_credit_used: Optional[int] = None
+    member_approval_status: Optional[str] = None
 
     
 
@@ -1163,11 +1155,9 @@ async def get_me(
         enterprise_id=current_user.enterprise_id,
 
         profile_photo_url=current_user.profile_photo_url,
-
         lawyer_profile=None,
-
         enterprise_profile=None,   # ✅ NEW default
-
+        member_approval_status=current_user.member_approval_status.value if current_user.member_approval_status else None,
     )
 
 
@@ -1189,6 +1179,7 @@ async def get_me(
                 member_limit=enterprise.member_limit,
                 verification_status="verified" if enterprise.status == EnterpriseStatus.ACTIVE else "pending",
                 is_team_member=(current_user.role == UserRole.ENTERPRISE_MEMBER),
+                member_approval_status=current_user.member_approval_status.value if current_user.member_approval_status else None,
             )
 
     # ✅ Check if user has an enterprise application awaiting admin approval
