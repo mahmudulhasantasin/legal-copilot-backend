@@ -62,12 +62,30 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"❌ Failed to start scheduler: {e}")
 
-    # Ensure new tables (e.g. feedback_suggestions, newsletter_subscribers) are created
+    # Ensure new tables and newly added columns are migrated
     try:
         from app.core.database import engine, Base
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        logger.info("✅ Database tables verified/initialized.")
+
+            # Auto-migrate missing columns on existing PostgreSQL tables
+            migration_sqls = [
+                "ALTER TABLE lawyer_profiles ADD COLUMN IF NOT EXISTS auto_accept_offers BOOLEAN DEFAULT FALSE;",
+                "ALTER TABLE lawyer_profiles ADD COLUMN IF NOT EXISTS max_concurrent_tasks INTEGER DEFAULT 5;",
+                "ALTER TABLE enterprises ADD COLUMN IF NOT EXISTS pending_admin_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS enterprise_id INTEGER REFERENCES enterprises(id) ON DELETE SET NULL;",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS company_role VARCHAR(50);",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS member_approval_status VARCHAR(50);",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS member_credit_quota INTEGER;",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS member_credit_used INTEGER;",
+            ]
+            for sql in migration_sqls:
+                try:
+                    await conn.execute(text(sql))
+                except Exception as sql_err:
+                    logger.warning(f"Migration note ({sql}): {sql_err}")
+
+        logger.info("✅ Database tables and columns verified/migrated.")
     except Exception as db_err:
         logger.warning(f"Database schema auto-sync note: {db_err}")
 

@@ -1030,7 +1030,7 @@ async def onboard_as_enterprise(payload: OnboardEnterpriseRequest, current_user:
 
 
 
-    existing_lawyer = await db.scalar(select(LawyerProfile).where(LawyerProfile.user_id == current_user.id))
+    existing_lawyer = await db.scalar(select(LawyerProfile.id).where(LawyerProfile.user_id == current_user.id))
 
     if existing_lawyer:
 
@@ -1038,7 +1038,12 @@ async def onboard_as_enterprise(payload: OnboardEnterpriseRequest, current_user:
 
 
 
-    existing_ent = await db.scalar(select(Enterprise).where(Enterprise.pending_admin_user_id == current_user.id))
+    existing_ent = await db.scalar(
+        select(Enterprise.id).where(
+            (Enterprise.pending_admin_user_id == current_user.id) |
+            (Enterprise.id == current_user.enterprise_id)
+        )
+    )
 
     if existing_ent:
 
