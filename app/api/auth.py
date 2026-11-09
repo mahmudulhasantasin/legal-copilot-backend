@@ -1173,39 +1173,45 @@ async def get_me(
 
 
     # ✅ Fetch Company Pool Balance + Enterprise Profile for Enterprise Roles
-
     if current_user.role in (UserRole.ENTERPRISE_ADMIN, UserRole.ENTERPRISE_MEMBER) and current_user.enterprise_id:
-
         enterprise = await db.scalar(
-
             select(Enterprise).where(Enterprise.id == current_user.enterprise_id)
-
         )
-
         if enterprise:
-
             response.enterprise_credit_balance = enterprise.credit_balance
-
             # ✅ NEW — populate nested enterprise profile for frontend
+            response.enterprise_profile = EnterpriseProfileResponse(
+                company_name=enterprise.name,
+                company_type=enterprise.company_type,
+                registration_no=enterprise.registration_no,
+                tin_no=enterprise.tin_no,
+                refer_code=enterprise.referral_code,
+                member_limit=enterprise.member_limit,
+                verification_status="verified" if enterprise.status == EnterpriseStatus.ACTIVE else "pending",
+                is_team_member=(current_user.role == UserRole.ENTERPRISE_MEMBER),
+            )
+
+    # ✅ Check if user has an enterprise application awaiting admin approval
+    if not response.enterprise_profile:
+        pending_enterprise = await db.scalar(
+            select(Enterprise).where(Enterprise.pending_admin_user_id == current_user.id)
+        )
+        if pending_enterprise:
+            status_str = "pending"
+            if pending_enterprise.status == EnterpriseStatus.ACTIVE:
+                status_str = "verified"
+            elif pending_enterprise.status == EnterpriseStatus.SUSPENDED:
+                status_str = "rejected"
 
             response.enterprise_profile = EnterpriseProfileResponse(
-
-                company_name=enterprise.name,
-
-                company_type=enterprise.company_type,
-
-                registration_no=enterprise.registration_no,
-
-                tin_no=enterprise.tin_no,
-
-                refer_code=enterprise.referral_code,
-
-                member_limit=enterprise.member_limit,
-
-                verification_status="verified" if enterprise.status == EnterpriseStatus.ACTIVE else "pending",
-
-                is_team_member=(current_user.role == UserRole.ENTERPRISE_MEMBER),
-
+                company_name=pending_enterprise.name,
+                company_type=pending_enterprise.company_type,
+                registration_no=pending_enterprise.registration_no,
+                tin_no=pending_enterprise.tin_no,
+                refer_code=pending_enterprise.referral_code,
+                member_limit=pending_enterprise.member_limit,
+                verification_status=status_str,
+                is_team_member=False,
             )
 
 
@@ -1220,41 +1226,23 @@ async def get_me(
 
 
 
-    # ✅ Fetch Lawyer Profile
-
-    if current_user.role == UserRole.LAWYER:
-
-        profile = await db.scalar(
-
-            select(LawyerProfile).where(LawyerProfile.user_id == current_user.id)
-
+    # ✅ Fetch Lawyer Profile (for approved lawyers or pending applicants)
+    profile = await db.scalar(
+        select(LawyerProfile).where(LawyerProfile.user_id == current_user.id)
+    )
+    if profile:
+        response.lawyer_profile = LawyerInfoResponse(
+            bar_council_id=profile.bar_council_id,
+            experience_years=profile.experience_years,
+            specializations=profile.specializations or [],
+            verification_status=_LAWYER_STATUS_MAP.get(
+                profile.status.value, "pending"
+            ),
         )
-
-        if profile:
-
-            response.lawyer_profile = LawyerInfoResponse(
-
-                bar_council_id=profile.bar_council_id,
-
-                experience_years=profile.experience_years,
-
-                specializations=profile.specializations or [],
-
-                verification_status=_LAWYER_STATUS_MAP.get(
-
-                    profile.status.value, "pending"
-
-                ),
-
-            )
-
-        else:
-
-            logger.warning(
-
-                f"[get_me] LAWYER role user {current_user.id} has no LawyerProfile row"
-
-            )
+    elif current_user.role == UserRole.LAWYER:
+        logger.warning(
+            f"[get_me] LAWYER role user {current_user.id} has no LawyerProfile row"
+        )
 
 
 
