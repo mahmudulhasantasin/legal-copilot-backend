@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import TypedDict, List, Dict, Any, Optional
 
@@ -157,7 +158,7 @@ def analyze_contract_risk(
     playbook_rules: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Synchronous fallback (scripts / testing use only)."""
-    import asyncio as _asyncio
-    return _asyncio.run(
+
+    return asyncio.run(
         analyze_contract_risk_async(contract_text, playbook_rules)
     )
