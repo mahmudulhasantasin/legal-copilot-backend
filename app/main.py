@@ -78,6 +78,7 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS member_approval_status VARCHAR(50);",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS member_credit_quota INTEGER;",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS member_credit_used INTEGER;",
+                "UPDATE users SET member_approval_status = 'APPROVED', company_role = 'ADMIN' WHERE role = 'ENTERPRISE_ADMIN' AND (member_approval_status IS NULL OR member_approval_status != 'APPROVED' OR company_role IS NULL OR company_role != 'ADMIN');",
             ]
             for sql in migration_sqls:
                 try:

@@ -1131,6 +1131,12 @@ async def get_me(
 
     """
 
+    if current_user.role == UserRole.ENTERPRISE_ADMIN:
+        if current_user.member_approval_status != MemberApprovalStatus.APPROVED or current_user.company_role != CompanyRole.ADMIN:
+            current_user.member_approval_status = MemberApprovalStatus.APPROVED
+            current_user.company_role = CompanyRole.ADMIN
+            await db.commit()
+
     response = UserResponse(
 
         id=current_user.id,

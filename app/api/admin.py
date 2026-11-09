@@ -361,7 +361,8 @@ async def approve_enterprise(
     # ⚠️ Upgrade user
     user.role = UserRole.ENTERPRISE_ADMIN
     user.enterprise_id = ent.id
-    user.company_role = None
+    user.company_role = CompanyRole.ADMIN
+    user.member_approval_status = MemberApprovalStatus.APPROVED
     user.company_joined_at = datetime.now(timezone.utc)
     user.is_verified = True
 

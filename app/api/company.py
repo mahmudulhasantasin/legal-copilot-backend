@@ -151,10 +151,12 @@ async def company_dashboard(
 
     total_members = await _count()
     active_members = await _count(
-        User.member_approval_status == MemberApprovalStatus.APPROVED
+        (User.member_approval_status == MemberApprovalStatus.APPROVED) | (User.role == UserRole.ENTERPRISE_ADMIN)
     )
     pending_members = await _count(
-        User.member_approval_status == MemberApprovalStatus.PENDING
+        User.member_approval_status == MemberApprovalStatus.PENDING,
+        User.role != UserRole.ENTERPRISE_ADMIN,
+        User.company_role != CompanyRole.ADMIN,
     )
 
     # Total quota used this month
@@ -228,9 +230,9 @@ async def list_members(
             "email": u.email,
             "full_name": u.full_name,
             "phone": u.phone,
-            "company_role": u.company_role.value if u.company_role else None,
-            "department": u.department,
-            "approval_status": u.member_approval_status.value if u.member_approval_status else None,
+            "company_role": "ADMIN" if (u.role == UserRole.ENTERPRISE_ADMIN or u.company_role == CompanyRole.ADMIN) else (u.company_role.value if u.company_role else "MEMBER"),
+            "department": u.department or ("Executive" if (u.role == UserRole.ENTERPRISE_ADMIN or u.company_role == CompanyRole.ADMIN) else None),
+            "approval_status": "APPROVED" if (u.role == UserRole.ENTERPRISE_ADMIN or u.company_role == CompanyRole.ADMIN) else (u.member_approval_status.value if u.member_approval_status else "PENDING"),
             "quota_total": u.member_credit_quota,
             "quota_used": u.member_credit_used,
             "quota_remaining": u.remaining_member_quota,
@@ -253,6 +255,8 @@ async def list_pending_members(
         .where(
             User.enterprise_id == ent.id,
             User.member_approval_status == MemberApprovalStatus.PENDING,
+            User.role != UserRole.ENTERPRISE_ADMIN,
+            User.company_role != CompanyRole.ADMIN,
             User.is_deleted == False,
         )
         .order_by(User.created_at.asc())
