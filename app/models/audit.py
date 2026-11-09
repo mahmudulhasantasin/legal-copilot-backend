@@ -28,6 +28,7 @@ class PaymentMethod(str, enum.Enum):
 class PaymentPurpose(str, enum.Enum):
     CREDIT_TOPUP = "CREDIT_TOPUP"
     ENTERPRISE_TOPUP = "ENTERPRISE_TOPUP"
+    LAWYER_REVIEW_FEE = "LAWYER_REVIEW_FEE"
 
 
 class PaymentStatus(str, enum.Enum):

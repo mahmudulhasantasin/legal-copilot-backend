@@ -289,7 +289,7 @@ async def initiate_payment(
             raise HTTPException(403, "Enterprise is not active.")
         purpose = PaymentPurpose.ENTERPRISE_TOPUP
         enterprise_id = ent.id
-        user_id = None
+        user_id = current_user.id
     else:
         purpose = PaymentPurpose.CREDIT_TOPUP
         enterprise_id = None

@@ -65,6 +65,13 @@ async def lifespan(app: FastAPI):
     # Ensure new tables and newly added columns are migrated
     try:
         from app.core.database import engine, Base
+        try:
+            async with engine.connect() as auto_conn:
+                await auto_conn.execution_options(isolation_level="AUTOCOMMIT")
+                await auto_conn.execute(text("ALTER TYPE paymentpurpose ADD VALUE IF NOT EXISTS 'ENTERPRISE_TOPUP';"))
+        except Exception as enum_err:
+            logger.warning(f"Enum migration note: {enum_err}")
+
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
@@ -133,7 +140,7 @@ app.add_middleware(
         "https://advotech-copilot.vercel.app",  # ✅ স্পেসিফিক লিংক
         "https://outliers-omega.vercel.app"     # ✅ স্পেসিফিক লিংক
     ],
-    # ✅ FIX: allow_origin_regex রিমুভ করা হলো (যাতে যেকোনো ভের্সেল অ্যাপ এক্সেস না পায়)
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
