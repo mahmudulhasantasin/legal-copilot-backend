@@ -786,7 +786,7 @@ async def register_enterprise_member(payload: EnterpriseMemberRegisterRequest, b
 
         credit_balance=0, is_active=True, is_verified=False,
 
-        enterprise_id=enterprise.id, member_approval_status=MemberApprovalStatus.PENDING,
+        enterprise_id=enterprise.id, company_role=CompanyRole.MEMBER, member_approval_status=MemberApprovalStatus.PENDING,
 
     )
 

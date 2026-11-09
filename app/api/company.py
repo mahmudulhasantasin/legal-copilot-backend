@@ -4,7 +4,7 @@ from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, BackgroundTasks
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, and_, desc
+from sqlalchemy import select, func, and_, or_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -156,7 +156,7 @@ async def company_dashboard(
     pending_members = await _count(
         User.member_approval_status == MemberApprovalStatus.PENDING,
         User.role != UserRole.ENTERPRISE_ADMIN,
-        User.company_role != CompanyRole.ADMIN,
+        or_(User.company_role.is_(None), User.company_role != CompanyRole.ADMIN),
     )
 
     # Total quota used this month
@@ -256,7 +256,7 @@ async def list_pending_members(
             User.enterprise_id == ent.id,
             User.member_approval_status == MemberApprovalStatus.PENDING,
             User.role != UserRole.ENTERPRISE_ADMIN,
-            User.company_role != CompanyRole.ADMIN,
+            or_(User.company_role.is_(None), User.company_role != CompanyRole.ADMIN),
             User.is_deleted == False,
         )
         .order_by(User.created_at.asc())
