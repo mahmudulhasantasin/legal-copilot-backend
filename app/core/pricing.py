@@ -238,14 +238,25 @@ DEFAULT_PACKAGES: List[Dict[str, Any]] = [
         "badge_text": "Best Value",
     },
     {
-        "name": "Enterprise Pack",
+        "name": "Enterprise Growth",
         "tier": "ENTERPRISE",
-        "description": "For companies with legal teams.",
+        "description": "For growing legal teams (up to 5 members).",
+        "price_bdt": Decimal("5000.00"),
+        "base_credits": 5000,
+        "bonus_credits": 500,       # User sees 5500 total
+        "applies_to": "ENTERPRISE",
+        "display_order": 4,
+        "badge_text": "Team Choice",
+    },
+    {
+        "name": "Enterprise Scale",
+        "tier": "ENTERPRISE",
+        "description": "For corporate legal departments (5-10 members).",
         "price_bdt": Decimal("10000.00"),
         "base_credits": 8000,
         "bonus_credits": 3500,      # User sees 11500 total
         "applies_to": "ENTERPRISE",
-        "display_order": 4,
-        "badge_text": None,
+        "display_order": 5,
+        "badge_text": "Most Popular",
     },
 ]

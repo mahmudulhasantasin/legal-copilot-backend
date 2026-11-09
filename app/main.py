@@ -79,6 +79,9 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS member_credit_quota INTEGER;",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS member_credit_used INTEGER;",
                 "UPDATE users SET member_approval_status = 'APPROVED', company_role = 'ADMIN' WHERE role = 'ENTERPRISE_ADMIN' AND (member_approval_status IS NULL OR member_approval_status != 'APPROVED' OR company_role IS NULL OR company_role != 'ADMIN');",
+                "INSERT INTO credit_packages (name, tier, description, price_bdt, base_credits, bonus_credits, applies_to, is_active, display_order, badge_text, created_at) SELECT 'Enterprise Growth', 'ENTERPRISE', 'For growing legal teams (up to 5 members).', 5000.00, 5000, 500, 'ENTERPRISE', TRUE, 4, 'Team Choice', NOW() WHERE NOT EXISTS (SELECT 1 FROM credit_packages WHERE name = 'Enterprise Growth');",
+                "INSERT INTO credit_packages (name, tier, description, price_bdt, base_credits, bonus_credits, applies_to, is_active, display_order, badge_text, created_at) SELECT 'Enterprise Scale', 'ENTERPRISE', 'For corporate legal teams (5-10 members).', 10000.00, 8000, 3500, 'ENTERPRISE', TRUE, 5, 'Most Popular', NOW() WHERE NOT EXISTS (SELECT 1 FROM credit_packages WHERE name = 'Enterprise Scale' OR name = 'Enterprise Pack');",
+                "UPDATE credit_packages SET name = 'Enterprise Scale', description = 'For corporate legal teams (5-10 members).', price_bdt = 10000.00, base_credits = 8000, bonus_credits = 3500, badge_text = 'Most Popular' WHERE name = 'Enterprise Pack';",
             ]
             for sql in migration_sqls:
                 try:

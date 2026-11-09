@@ -485,6 +485,10 @@ async def approve_payment(
         if not ent:
             raise HTTPException(404, "Enterprise not found.")
         ent.credit_balance += credits
+        if credits >= 11500:
+            ent.member_limit = max(ent.member_limit, 10)
+        elif credits >= 5500:
+            ent.member_limit = max(ent.member_limit, 5)
         db.add(CreditTransaction(
             enterprise_id=ent.id,
             amount=+credits,
