@@ -185,6 +185,14 @@ async def analyze_contract_risk_async(
     # Step 5: Real-time Statutory Citation Verification
     verified_risks = await _verify_detected_statutes(unique_risks, retrieved_statutes)
 
+    # Sort verified risks by natural clause number so the report follows contract sequence
+    def _clause_sort_key(r: Dict[str, Any]) -> int:
+        raw = str(r.get("source_clause_number") or r.get("clause_number") or "").strip()
+        m = re.search(r'\d+', raw)
+        return int(m.group()) if m else 999
+
+    verified_risks.sort(key=_clause_sort_key)
+
     # Step 6: Map-Reduce Executive Summary Synthesis
     memo_summary = await synthesize_summary_node(
         detected_risks=verified_risks,

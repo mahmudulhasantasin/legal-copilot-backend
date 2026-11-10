@@ -223,8 +223,27 @@ async def synthesize_summary_node(
     try:
         llm = get_llm()
         response = await asyncio.to_thread(llm.invoke, prompt)
-        summary = response.content if hasattr(response, "content") else str(response)
-        summary = str(summary).strip()
+        raw_content = response.content if hasattr(response, "content") else response
+        if isinstance(raw_content, list):
+            summary = "".join(
+                item.get("text", "") if isinstance(item, dict) else str(item)
+                for item in raw_content
+            ).strip()
+        else:
+            summary = str(raw_content).strip()
+
+        # Handle edge-case where stringified python list was returned
+        if summary.startswith("[") and ("'type': 'text'" in summary or '"type": "text"' in summary):
+            try:
+                import ast
+                parsed_blocks = ast.literal_eval(summary)
+                if isinstance(parsed_blocks, list):
+                    summary = "".join(
+                        b.get("text", "") for b in parsed_blocks if isinstance(b, dict) and b.get("text")
+                    ).strip()
+            except Exception:
+                pass
+
         summary = re.sub(r"^```[a-z]*\s*", "", summary, flags=re.MULTILINE)
         summary = re.sub(r"\s*```$", "", summary, flags=re.MULTILINE).strip()
         if len(summary) > 60:
