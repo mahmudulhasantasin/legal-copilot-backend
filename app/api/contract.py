@@ -56,6 +56,10 @@ class ClauseAnalysisItem(BaseModel):
     legal_explanation: Optional[str] = None
     proposed_safe_redline: Optional[str] = None
     is_compliant: bool = False
+    statutory_status: Optional[str] = None
+    is_statute_verified: Optional[bool] = False
+    commercial_risk: Optional[str] = None
+    negotiation_guidance: Optional[str] = None
 
 
 class ContractMemoResponse(BaseModel):
@@ -63,10 +67,14 @@ class ContractMemoResponse(BaseModel):
     contract_id: int
     title: str
     overall_risk: RiskLevel
+    risk_grade: str = "MODERATE"
     risk_score: int
     executive_summary: str
     counts: Dict[str, int]
     clauses: List[ClauseAnalysisItem]
+    missing_provisions: Optional[List[Dict[str, Any]]] = None
+    audited_for: Optional[str] = "CLIENT"
+    stamp_duty_advisory: Optional[str] = None
     hitl_status: HITLStatus
     lawyer_name: Optional[str] = None
     lawyer_notes: Optional[str] = None
@@ -85,25 +93,28 @@ class RequestVerificationResponse(BaseModel):
 # HELPERS
 # ──────────────────────────────────────────────────────────
 
-def _calculate_metrics(clauses: List[dict], total_clauses_count: Optional[int] = None) -> tuple[Dict[str, int], int, RiskLevel]:
-    high = sum(1 for c in clauses if str(c.get("risk_level", "")).lower() in ["high risk", "high"])
+def _calculate_metrics(clauses: List[dict], missing_provisions: Optional[List[dict]] = None) -> tuple[Dict[str, int], int, RiskLevel, str]:
+    high = sum(1 for c in clauses if str(c.get("risk_level", "")).lower() in ["high risk", "high", "critical"])
     review = sum(1 for c in clauses if str(c.get("risk_level", "")).lower() in ["review needed", "moderate", "medium"])
     compliant = sum(1 for c in clauses if c.get("is_compliant") or str(c.get("risk_level", "")).lower() in ["compliant", "low"])
+    missing_count = len(missing_provisions or [])
 
-    # Incorporate estimated total clauses so score denominator accurately reflects compliant clauses
-    total = max(len(clauses), total_clauses_count or 0, 1)
-    score = min(100, int((high * 40 + review * 20) / total * 2.5))
-    score = max(score, 10 if total > 0 else 0)
+    # Transparent, bounded, monotonic risk score (0-100)
+    raw_score = high * 30 + missing_count * 15 + review * 10
+    score = min(100, max(10 if (high > 0 or review > 0 or missing_count > 0) else 0, raw_score))
 
     if high > 0 or score >= 60:
         overall = RiskLevel.HIGH
-    elif review > 0 or score >= 35:
+        risk_grade = "HIGH"
+    elif review > 0 or missing_count > 0 or score >= 35:
         overall = RiskLevel.MODERATE
+        risk_grade = "MODERATE"
     else:
         overall = RiskLevel.LOW
+        risk_grade = "LOW"
 
-    effective_compliant = max(compliant, total - high - review)
-    return {"high_risk": high, "review_needed": review, "compliant": effective_compliant}, score, overall
+    effective_compliant = max(compliant, len(clauses) - high - review)
+    return {"high_risk": high, "review_needed": review, "compliant": effective_compliant, "missing_count": missing_count}, score, overall, risk_grade
 
 
 async def _upload_to_supabase(file_bytes: bytes, filename: str, user_id: int, content_type: str) -> str:
@@ -136,6 +147,7 @@ async def _upload_to_supabase(file_bytes: bytes, filename: str, user_id: int, co
 async def upload_and_audit(
     file: UploadFile = File(...),
     title: Optional[str] = Form(None),
+    audited_for: Optional[str] = Form("CLIENT"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -196,21 +208,24 @@ async def upload_and_audit(
     async with timed_event(
         db, "audit_completed",
         user_id=current_user.id,
-        event_data={"file_ext": ext, "has_playbook": bool(playbook_rules)},
+        event_data={"file_ext": ext, "has_playbook": bool(playbook_rules), "audited_for": audited_for},
         commit=False
     ):
         agent_output = await analyze_contract_risk_async(
-            contract_text=raw_text,  # CONTRACT_TEXT_LIMIT is applied inside contract_graph.py
-            playbook_rules=playbook_rules
+            contract_text=raw_text,
+            playbook_rules=playbook_rules,
+            audited_for=audited_for or "CLIENT"
         )
 
     detected_risks = agent_output.get("detected_risks", [])
+    missing_provisions = agent_output.get("missing_provisions", [])
+    stamp_duty_advisory = agent_output.get("stamp_duty_advisory", "")
     memo_summary = agent_output.get("memo_summary", "Contract analyzed successfully.")
 
     ui_clauses = []
     for idx, risk in enumerate(detected_risks, start=1):
         severity = str(risk.get("severity", "MODERATE")).upper()
-        is_comp = severity in ["LOW", "COMPLIANT"]
+        is_comp = severity in ["LOW", "COMPLIANT"] or risk.get("is_compliant", False)
 
         # ✅ CANONICAL RISK LABELS — must match frontend `normalizeRiskLevel()`
         if severity in ("HIGH", "CRITICAL"):
@@ -220,30 +235,44 @@ async def upload_and_audit(
         else:
             risk_label = "LOW"
 
+        # Preserve original source clause number from the parsed AST
+        raw_c_num = str(risk.get("source_clause_number") or risk.get("clause_number") or idx).strip()
+        if not raw_c_num.startswith("§") and not raw_c_num.lower().startswith("clause"):
+            clause_num_str = f"Clause {raw_c_num}"
+        else:
+            clause_num_str = raw_c_num
+
         ui_clauses.append({
-            "clause_number": f"§ {idx}",
+            "clause_number": clause_num_str,
             "clause_title": risk.get("clause_title", f"Clause {idx}"),
             "risk_level": risk_label,
             "original_text": risk.get("flagged_text", ""),
-            "statute_reference": risk.get("violated_law", "Bangladesh Law / Playbook"),
+            "statute_reference": risk.get("violated_law", "Commercial Standard / General Contract Principle"),
             "legal_explanation": risk.get("explanation", "Review required."),
             "proposed_safe_redline": risk.get("recommendation"),
-            "is_compliant": is_comp
+            "is_compliant": is_comp,
+            "statutory_status": risk.get("statutory_status", "COMMERCIAL_ISSUE" if not is_comp else "FULLY_COMPLIANT"),
+            "is_statute_verified": risk.get("is_statute_verified", False),
+            "commercial_risk": risk_label,
+            "negotiation_guidance": risk.get("negotiation_guidance", "")
         })
 
     if not ui_clauses:
         ui_clauses.append({
-            "clause_number": "§ 1",
+            "clause_number": "Clause 1",
             "clause_title": "General Compliance",
-            "risk_level": "LOW",                 # ✅ was "Compliant"
+            "risk_level": "LOW",
             "original_text": "Document scanned.",
             "statute_reference": "N/A",
-            "legal_explanation": "No risks detected.",
-            "is_compliant": True
+            "legal_explanation": "No material risks detected.",
+            "is_compliant": True,
+            "statutory_status": "FULLY_COMPLIANT",
+            "is_statute_verified": False,
+            "commercial_risk": "LOW",
+            "negotiation_guidance": ""
         })
 
-    estimated_total = agent_output.get("estimated_total_clauses") or len(ui_clauses)
-    counts, risk_score, risk_enum = _calculate_metrics(ui_clauses, total_clauses_count=estimated_total)
+    counts, risk_score, risk_enum, risk_grade_str = _calculate_metrics(ui_clauses, missing_provisions)
 
     contract = Contract(
         user_id=current_user.id,
@@ -295,10 +324,14 @@ async def upload_and_audit(
         contract_id=contract.id,
         title=contract.title,
         overall_risk=memo.overall_risk,
+        risk_grade=risk_grade_str,
         risk_score=memo.risk_score,
         executive_summary=memo.executive_summary,
         counts=counts,
         clauses=[ClauseAnalysisItem(**c) for c in memo.clauses_analysis],
+        missing_provisions=missing_provisions,
+        audited_for=audited_for or "CLIENT",
+        stamp_duty_advisory=stamp_duty_advisory,
         hitl_status=memo.hitl_status
     )
 
@@ -552,6 +585,7 @@ async def get_contract_detail(
         contract_id=contract.id,
         title=contract.title,
         overall_risk=memo.overall_risk,
+        risk_grade=memo.overall_risk.value,
         risk_score=memo.risk_score,
         executive_summary=memo.executive_summary or "",
         counts={
