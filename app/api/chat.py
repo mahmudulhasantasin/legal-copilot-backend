@@ -300,6 +300,7 @@ async def get_session_history(
                 "citations": m.citations,
                 "cited_cases": m.cited_cases,                   
                 "suggested_next_steps": m.suggested_next_steps, 
+                "suggested_follow_ups": getattr(m, "suggested_follow_ups", None) or [],
                 "needs_clarification": m.needs_clarification,   
                 "created_at": m.created_at
             }
@@ -508,6 +509,7 @@ DETAILED CLAUSES ANALYSIS:
         citations=[c.model_dump() for c in structured_res.cited_sections],
         cited_cases=[c.model_dump() for c in structured_res.cited_cases],             
         suggested_next_steps=structured_res.suggested_next_steps,                   
+        suggested_follow_ups=structured_res.suggested_follow_ups,
         needs_clarification=structured_res.needs_clarification,                     
         language_detected=lang
     )

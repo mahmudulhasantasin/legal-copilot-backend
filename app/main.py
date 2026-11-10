@@ -77,6 +77,7 @@ async def lifespan(app: FastAPI):
 
             # Auto-migrate missing columns on existing PostgreSQL tables
             migration_sqls = [
+                "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS suggested_follow_ups JSON;",
                 "ALTER TABLE lawyer_profiles ADD COLUMN IF NOT EXISTS auto_accept_offers BOOLEAN DEFAULT FALSE;",
                 "ALTER TABLE lawyer_profiles ADD COLUMN IF NOT EXISTS max_concurrent_tasks INTEGER DEFAULT 5;",
                 "ALTER TABLE enterprises ADD COLUMN IF NOT EXISTS pending_admin_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;",

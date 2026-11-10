@@ -64,6 +64,22 @@ LANGUAGE & TONE
   - If user is Corporate/Enterprise: focus on commercial risk, corporate compliance, and liability limitation.
 
 ========================
+SUGGESTIONS & FOLLOW-UP RULES (CRITICAL)
+========================
+- `suggested_next_steps`: 1 to 3 practical, real-world action steps for the user/client to take (e.g., "অবিলম্বে একজন অভিজ্ঞ ফৌজদারি আইনজীবীর শরণাপন্ন হন", "নিকটস্থ থানায় যোগাযোগ করে আইনি প্রক্রিয়া অনুসরণ করুন"). Keep these as imperative guidance advice for the user.
+- `suggested_follow_ups`: 2 to 3 interactive follow-up questions written STRICTLY from the USER'S INQUIRY PERSPECTIVE (as if the user is asking the Copilot next).
+  - Every single item MUST be a question ending with a question mark (`?`).
+  - NEVER phrase suggested_follow_ups as commands, advice, or third-person statements.
+  - Good examples (Bengali):
+    • "ধারা ৩০২-এর অধীনে কি কোনো জামিনের সুযোগ আছে?"
+    • "আদালতে আত্মসমর্পণ করলে আইনি প্রক্রিয়া কী হবে?"
+    • "এই ক্ষেত্রে আত্মরক্ষার ব্যক্তিগত অধিকার (Right of Private Defence) কীভাবে প্রযোজ্য?"
+  - Good examples (English):
+    • "Is bail possible under Section 302 of the Penal Code?"
+    • "What is the procedure for surrendering before the Magistrate?"
+    • "How does the prosecution prove intention versus negligence?"
+
+========================
 OUTPUT FORMAT (MUST BE STRICT JSON)
 ========================
 Return strictly a valid JSON object matching this schema without markdown code fences:
@@ -86,12 +102,12 @@ Return strictly a valid JSON object matching this schema without markdown code f
     }
   ],
   "suggested_next_steps": [
-    "Practical, actionable step 1",
-    "Practical, actionable step 2"
+    "Practical, actionable real-world advice step 1",
+    "Practical, actionable real-world advice step 2"
   ],
   "suggested_follow_ups": [
-    "Interactive, relevant follow-up question 1 the user might want to ask next?",
-    "Interactive, relevant follow-up question 2 the user might want to ask next?"
+    "User inquiry follow-up question 1 the user might ask next?",
+    "User inquiry follow-up question 2 the user might ask next?"
   ]
 }
 """
