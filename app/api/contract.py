@@ -7,6 +7,7 @@ from typing import List, Optional, Dict, Any
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, desc, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +25,7 @@ from app.services.ingestion import extract_text_from_file
 from app.agents.contract_graph import analyze_contract_risk_async
 from app.services.lawyer_assignment import generate_initial_offer
 from app.services.metrics import track_event, timed_event # ✅ নতুন ইমপোর্ট
+from app.services.redline_generator import build_redlined_docx
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/contracts", tags=["Contract Audit & HITL"])
@@ -599,4 +601,80 @@ async def get_contract_detail(
         lawyer_notes=memo.lawyer_notes,
         lawyer_signature=memo.lawyer_signature,
         completed_at=memo.completed_at,
+    )
+
+
+# ──────────────────────────────────────────────────────────
+# DOWNLOAD REDLINED DOCX (JusticeSphere AIBC Requirement)
+# ──────────────────────────────────────────────────────────
+
+@router.get("/{contract_id}/download-redline")
+async def download_contract_redline_docx(
+    contract_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Generate and stream an enterprise-grade Redlined Word Document (.docx)
+    containing strikethrough original text, highlighted green statutory draft,
+    and statutory legal rationale commentary under Bangladesh law.
+    """
+    result = await db.execute(
+        select(Contract, ContractMemo)
+        .join(ContractMemo, Contract.id == ContractMemo.contract_id)
+        .where(
+            Contract.id == contract_id,
+            Contract.deleted_at == None,
+        )
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(404, "Contract or audit memo not found.")
+
+    contract, memo = row
+
+    # Access check: owner OR same-enterprise
+    is_owner = contract.user_id == current_user.id
+    is_same_enterprise = (
+        current_user.enterprise_id is not None
+        and contract.enterprise_id == current_user.enterprise_id
+        and current_user.role in (UserRole.ENTERPRISE_ADMIN, UserRole.ENTERPRISE_MEMBER)
+    )
+    if not (is_owner or is_same_enterprise):
+        raise HTTPException(403, "Access denied.")
+
+    lawyer_name: Optional[str] = None
+    if memo.lawyer_id:
+        lawyer_profile = await db.scalar(
+            select(LawyerProfile).where(LawyerProfile.id == memo.lawyer_id)
+        )
+        if lawyer_profile:
+            lawyer_user = await db.scalar(
+                select(User).where(User.id == lawyer_profile.user_id)
+            )
+            if lawyer_user:
+                lawyer_name = lawyer_user.full_name
+
+    docx_buffer = build_redlined_docx(
+        title=contract.title or "Contract",
+        overall_risk=memo.overall_risk.value if hasattr(memo.overall_risk, "value") else str(memo.overall_risk),
+        risk_score=memo.risk_score or 0,
+        executive_summary=memo.executive_summary or "",
+        clauses=memo.clauses_analysis or [],
+        missing_provisions=memo.missing_provisions,
+        stamp_duty_advisory=memo.stamp_duty_advisory,
+        lawyer_name=lawyer_name,
+        lawyer_notes=memo.lawyer_notes,
+        is_lawyer_verified=bool(memo.hitl_status == HITLStatus.COMPLETED or memo.signed_contract_path),
+    )
+
+    clean_filename = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', contract.title or "contract")
+    filename = f"Redlined_{clean_filename}.docx"
+
+    return StreamingResponse(
+        docx_buffer,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
     )
