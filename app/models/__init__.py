@@ -37,6 +37,7 @@ from app.models.user import (
     MemberApprovalStatus,
     WithdrawalRequest,
     WithdrawalStatus,
+    PayoutMethod,
 )
 
 # 3. Lawyer (references User)
@@ -110,6 +111,7 @@ __all__ = [
     "MemberApprovalStatus",
     "WithdrawalRequest",
     "WithdrawalStatus",
+    "PayoutMethod",
 
     # ── Lawyer ──
     "LawyerProfile",

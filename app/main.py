@@ -68,7 +68,19 @@ async def lifespan(app: FastAPI):
         try:
             async with engine.connect() as auto_conn:
                 await auto_conn.execution_options(isolation_level="AUTOCOMMIT")
-                await auto_conn.execute(text("ALTER TYPE paymentpurpose ADD VALUE IF NOT EXISTS 'ENTERPRISE_TOPUP';"))
+                for enum_stmt in (
+                    "ALTER TYPE paymentpurpose ADD VALUE IF NOT EXISTS 'ENTERPRISE_TOPUP';",
+                    "ALTER TYPE paymentmethod ADD VALUE IF NOT EXISTS 'SSLCOMMERZ';",
+                    "ALTER TYPE paymentstatus ADD VALUE IF NOT EXISTS 'FAILED';",
+                    "ALTER TYPE paymentstatus ADD VALUE IF NOT EXISTS 'CANCELLED';",
+                    "ALTER TYPE credittxtype ADD VALUE IF NOT EXISTS 'TOPUP_SSLCOMMERZ';",
+                    "ALTER TYPE auditaction ADD VALUE IF NOT EXISTS 'PAYMENT_FAILED';",
+                    "ALTER TYPE auditaction ADD VALUE IF NOT EXISTS 'PAYMENT_CANCELLED';",
+                ):
+                    try:
+                        await auto_conn.execute(text(enum_stmt))
+                    except Exception as inner_enum_err:
+                        logger.warning(f"Enum migration note ({enum_stmt}): {inner_enum_err}")
         except Exception as enum_err:
             logger.warning(f"Enum migration note: {enum_err}")
 
@@ -78,6 +90,23 @@ async def lifespan(app: FastAPI):
             # Auto-migrate missing columns on existing PostgreSQL tables
             migration_sqls = [
                 "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS suggested_follow_ups JSON;",
+                "ALTER TABLE payments ADD COLUMN IF NOT EXISTS gateway_session_key VARCHAR(120);",
+                "ALTER TABLE payments ADD COLUMN IF NOT EXISTS val_id VARCHAR(120);",
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_payments_val_id ON payments (val_id) WHERE val_id IS NOT NULL;",
+                "ALTER TABLE payments ADD COLUMN IF NOT EXISTS bank_tran_id VARCHAR(120);",
+                "CREATE INDEX IF NOT EXISTS ix_payments_bank_tran_id ON payments (bank_tran_id);",
+                "ALTER TABLE payments ADD COLUMN IF NOT EXISTS card_type VARCHAR(80);",
+                "ALTER TABLE payments ADD COLUMN IF NOT EXISTS card_issuer VARCHAR(120);",
+                "ALTER TABLE payments ADD COLUMN IF NOT EXISTS card_brand VARCHAR(60);",
+                "ALTER TABLE payments ADD COLUMN IF NOT EXISTS store_amount_bdt NUMERIC(10, 2);",
+                "ALTER TABLE payments ADD COLUMN IF NOT EXISTS gateway_status VARCHAR(40);",
+                "ALTER TABLE payments ADD COLUMN IF NOT EXISTS gateway_validated_at TIMESTAMPTZ;",
+                "ALTER TABLE payments ADD COLUMN IF NOT EXISTS gateway_raw_response JSON;",
+                "ALTER TABLE withdrawal_requests ADD COLUMN IF NOT EXISTS payout_method VARCHAR(30) DEFAULT 'BKASH' NOT NULL;",
+                "ALTER TABLE withdrawal_requests ADD COLUMN IF NOT EXISTS account_number VARCHAR(60);",
+                "ALTER TABLE withdrawal_requests ADD COLUMN IF NOT EXISTS bank_name VARCHAR(120);",
+                "ALTER TABLE withdrawal_requests ADD COLUMN IF NOT EXISTS branch_name VARCHAR(120);",
+                "ALTER TABLE withdrawal_requests ALTER COLUMN bkash_number TYPE VARCHAR(60);",
                 "ALTER TABLE lawyer_profiles ADD COLUMN IF NOT EXISTS auto_accept_offers BOOLEAN DEFAULT FALSE;",
                 "ALTER TABLE lawyer_profiles ADD COLUMN IF NOT EXISTS max_concurrent_tasks INTEGER DEFAULT 5;",
                 "ALTER TABLE enterprises ADD COLUMN IF NOT EXISTS pending_admin_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;",
@@ -93,7 +122,8 @@ async def lifespan(app: FastAPI):
             ]
             for sql in migration_sqls:
                 try:
-                    await conn.execute(text(sql))
+                    async with conn.begin_nested():
+                        await conn.execute(text(sql))
                 except Exception as sql_err:
                     logger.warning(f"Migration note ({sql}): {sql_err}")
 
@@ -161,7 +191,7 @@ app.include_router(admin.router)
 # Enterprise Admin
 app.include_router(company.router)
 
-# Payments (bKash Manual Flow)
+# Payments (SSLCommerz Gateway)
 app.include_router(payments.router)
 
 # Lawyer HITL (Offers, Submissions, Withdrawals)

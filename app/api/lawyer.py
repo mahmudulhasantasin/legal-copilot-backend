@@ -17,7 +17,7 @@ from app.core.security import get_current_user, require_roles
 from app.core.tier_limits import CONTRACT_REVIEW_LIMITS
 from app.models.user import (
     User, UserRole, CreditTxType, CreditTransaction,
-    WithdrawalRequest, WithdrawalStatus,
+    WithdrawalRequest, WithdrawalStatus, PayoutMethod,
 )
 from app.models.lawyer import LawyerProfile, LawyerStatus, LawyerAvailability
 from app.models.memo import ContractMemo, Contract, HITLStatus
@@ -63,10 +63,52 @@ class SubmitReviewRequest(BaseModel):
     signature_url: str = Field(min_length=5, max_length=500, description="Supabase path for signature image")
     signed_pdf_url: str = Field(min_length=5, max_length=500, description="Supabase path for final signed PDF")
 
+import re
+from typing import Optional
+from pydantic import model_validator
+
+
 class WithdrawRequest(BaseModel):
     amount_bdt: Decimal = Field(gt=0, le=100000)
-    bkash_number: str = Field(min_length=11, max_length=20)
+    payout_method: PayoutMethod = PayoutMethod.BKASH
+    account_number: Optional[str] = Field(default=None, min_length=4, max_length=60)
+    bkash_number: Optional[str] = Field(default=None, min_length=4, max_length=60)
+    bank_name: Optional[str] = Field(default=None, max_length=120)
+    branch_name: Optional[str] = Field(default=None, max_length=120)
     account_holder_name: str = Field(min_length=2, max_length=255)
+
+    @model_validator(mode="after")
+    def validate_payout_details(self) -> "WithdrawRequest":
+        raw_account = (self.account_number or self.bkash_number or "").strip()
+        if not raw_account:
+            raise ValueError("Account number or wallet number is required.")
+
+        if self.payout_method in (PayoutMethod.BKASH, PayoutMethod.NAGAD, PayoutMethod.ROCKET):
+            cleaned = re.sub(r"[\s\-()]", "", raw_account)
+            if cleaned.startswith("+88"):
+                cleaned = cleaned[3:]
+            elif cleaned.startswith("88") and len(cleaned) == 13:
+                cleaned = cleaned[2:]
+            if not re.match(r"^01[3-9]\d{8}$", cleaned):
+                raise ValueError(
+                    f"Valid Bangladeshi mobile wallet number (01XXXXXXXXX) is required for {self.payout_method.value}."
+                )
+            self.account_number = cleaned
+            self.bkash_number = cleaned
+            self.bank_name = None
+            self.branch_name = None
+        else:
+            bank = (self.bank_name or "").strip()
+            if len(bank) < 2:
+                raise ValueError("Bank name is required for bank transfers.")
+            if len(raw_account) < 6:
+                raise ValueError("Valid bank account number (at least 6 characters) is required.")
+            self.bank_name = bank
+            self.branch_name = (self.branch_name or "").strip() or None
+            self.account_number = raw_account
+            self.bkash_number = raw_account
+
+        return self
 
 # ──────────────────────────────────────────────────────────
 # ENDPOINTS
@@ -323,13 +365,28 @@ async def request_withdrawal(payload: WithdrawRequest, lawyer: LawyerProfile = D
         raise HTTPException(400, "You already have a pending withdrawal request.")
 
     req = WithdrawalRequest(
-        lawyer_id=profile.id, amount_bdt=payload.amount_bdt, bkash_number=payload.bkash_number,
-        account_holder_name=payload.account_holder_name, status=WithdrawalStatus.PENDING,
+        lawyer_id=profile.id,
+        amount_bdt=payload.amount_bdt,
+        payout_method=payload.payout_method.value,
+        account_number=payload.account_number or "",
+        bkash_number=payload.bkash_number or payload.account_number or "",
+        bank_name=payload.bank_name,
+        branch_name=payload.branch_name,
+        account_holder_name=payload.account_holder_name.strip(), status=WithdrawalStatus.PENDING,
     )
     db.add(req)
     await db.commit()
     await db.refresh(req)
-    return {"status": "success", "withdrawal_id": req.id, "amount_bdt": float(req.amount_bdt), "message": "Withdrawal requested. Admin will process within 2 business days."}
+    return {
+        "status": "success",
+        "withdrawal_id": req.id,
+        "amount_bdt": float(req.amount_bdt),
+        "payout_method": req.payout_method,
+        "account_number": req.account_number,
+        "bank_name": req.bank_name,
+        "branch_name": req.branch_name,
+        "message": "Withdrawal requested. Admin will process within 2 business days.",
+    }
 
 @router.get("/withdrawals")
 async def list_my_withdrawals(lawyer: LawyerProfile = Depends(get_current_lawyer), db: AsyncSession = Depends(get_db)):
@@ -347,6 +404,11 @@ async def list_my_withdrawals(lawyer: LawyerProfile = Depends(get_current_lawyer
             "requested_at": w.requested_at,
             "processed_at": w.processed_at, 
             "admin_note": w.admin_note, 
+            "payout_method": getattr(w, "payout_method", None) or "BKASH",
+            "account_number": getattr(w, "account_number", None) or w.bkash_number,
+            "bank_name": getattr(w, "bank_name", None),
+            "branch_name": getattr(w, "branch_name", None),
+            "account_holder_name": w.account_holder_name,
             "payout_trx_id": w.payout_trx_id,
         })
     return result

@@ -88,7 +88,7 @@ async def get_pitch_deck():
             "global_legal_tech": "$28B (2024) growing to $70B+ by 2030"
         },
         "business_model": {
-            "b2c_topup": "Credit-based micro-payments via bKash (1 credit = ~$0.01)",
+            "b2c_topup": "Credit-based micro-payments via SSLCommerz (Cards, bKash, Nagad, Rocket, NetBanking)",
             "b2b_enterprise": "Monthly subscriptions for corporate playbooks & team quotas",
             "mcp_api": "Licensing our legal MCP server to other AI agent developers"
         },
@@ -119,7 +119,7 @@ async def get_jurisdictions():
                 "status": "Live",
                 "statutes_ingested": 35000,
                 "languages": ["Bengali", "English", "Banglish"],
-                "payment_gateway": "bKash"
+                "payment_gateway": "SSLCommerz"
             }
         ],
         "planned_jurisdictions": [

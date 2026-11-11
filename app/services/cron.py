@@ -77,7 +77,7 @@ async def cron_1_hour():
     """
     Runs every 1 hour:
     1. Refund clients who breached the 3-day global SLA.
-    2. Expire abandoned bKash pending payments.
+    2. Expire abandoned SSLCommerz pending payments.
     """
     async with AsyncSessionLocal() as db:
         logger.info("[Cron] Running hourly SLA & Payment checks...")

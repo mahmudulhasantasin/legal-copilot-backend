@@ -39,6 +39,7 @@ class CreditTxType(str, enum.Enum):
     # ── Earns ──
     SIGNUP_BONUS = "SIGNUP_BONUS"
     TOPUP_MANUAL = "TOPUP_MANUAL"
+    TOPUP_SSLCOMMERZ = "TOPUP_SSLCOMMERZ"
     ADMIN_ADJUST = "ADMIN_ADJUST"
     REFUND = "REFUND"
     ENTERPRISE_ALLOCATION = "ENTERPRISE_ALLOCATION"
@@ -72,6 +73,13 @@ class WithdrawalStatus(str, enum.Enum):
     APPROVED = "APPROVED"
     PAID = "PAID"
     REJECTED = "REJECTED"
+
+
+class PayoutMethod(str, enum.Enum):
+    BKASH = "BKASH"
+    NAGAD = "NAGAD"
+    ROCKET = "ROCKET"
+    BANK = "BANK"
 
 
 # ──────────────────────────────────────────────────────────
@@ -167,7 +175,7 @@ class User(Base):
     contracts: Mapped[List["Contract"]] = relationship(
         back_populates="user", foreign_keys="Contract.user_id"
     )
-    
+
     # ✅ ইনডেন্টেশন ঠিক করা হয়েছে এবং টাইপ হিন্ট স্ট্যান্ডার্ড করা হয়েছে
     enterprise: Mapped[Optional["Enterprise"]] = relationship(  # type: ignore
         back_populates="members", foreign_keys=[enterprise_id]
@@ -232,8 +240,8 @@ class CreditTransaction(Base):
 
 class WithdrawalRequest(Base):
     """
-    Lawyer submits a withdrawal request. Admin pays via bKash manually
-    and marks as PAID with the bKash Transaction ID.
+    Lawyer submits a withdrawal request (bKash, Nagad, Rocket, or Bank Transfer).
+    Admin approves & pays manually and marks as PAID with payout reference/TrxID.
     """
     __tablename__ = "withdrawal_requests"
 
@@ -245,7 +253,11 @@ class WithdrawalRequest(Base):
 
     amount_bdt: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
 
-    bkash_number: Mapped[str] = mapped_column(String(20), nullable=False)
+    bkash_number: Mapped[str] = mapped_column(String(60), nullable=False)
+    payout_method: Mapped[str] = mapped_column(String(30), default="BKASH", nullable=False)
+    account_number: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
+    bank_name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    branch_name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     account_holder_name: Mapped[str] = mapped_column(String(255), nullable=False)
 
     status: Mapped[WithdrawalStatus] = mapped_column(

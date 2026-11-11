@@ -23,6 +23,7 @@ class PaymentMethod(str, enum.Enum):
     BKASH = "BKASH"
     NAGAD = "NAGAD"
     BANK = "BANK"
+    SSLCOMMERZ = "SSLCOMMERZ"
 
 
 class PaymentPurpose(str, enum.Enum):
@@ -36,6 +37,8 @@ class PaymentStatus(str, enum.Enum):
     PENDING_VERIFICATION = "PENDING_VERIFICATION"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
     REFUNDED = "REFUNDED"
     EXPIRED = "EXPIRED"
 
@@ -68,6 +71,8 @@ class AuditAction(str, enum.Enum):
     PAYMENT_TRX_SUBMITTED = "PAYMENT_TRX_SUBMITTED"
     PAYMENT_APPROVED = "PAYMENT_APPROVED"
     PAYMENT_REJECTED = "PAYMENT_REJECTED"
+    PAYMENT_FAILED = "PAYMENT_FAILED"
+    PAYMENT_CANCELLED = "PAYMENT_CANCELLED"
     PAYMENT_REFUNDED = "PAYMENT_REFUNDED"
 
     # ── Credits ──
@@ -131,7 +136,7 @@ class Payment(Base):
     )
 
     method: Mapped[PaymentMethod] = mapped_column(
-        Enum(PaymentMethod), default=PaymentMethod.BKASH, nullable=False
+        Enum(PaymentMethod), default=PaymentMethod.SSLCOMMERZ, nullable=False
     )
     purpose: Mapped[PaymentPurpose] = mapped_column(Enum(PaymentPurpose), nullable=False)
 
@@ -143,6 +148,18 @@ class Payment(Base):
         String(100), unique=True, index=True, nullable=True
     )
     sender_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # ── Gateway Telemetry (SSLCommerz) ──
+    gateway_session_key: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    val_id: Mapped[str | None] = mapped_column(String(120), unique=True, index=True, nullable=True)
+    bank_tran_id: Mapped[str | None] = mapped_column(String(120), index=True, nullable=True)
+    card_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    card_issuer: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    card_brand: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    store_amount_bdt: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    gateway_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    gateway_validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    gateway_raw_response: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     status: Mapped[PaymentStatus] = mapped_column(
         Enum(PaymentStatus), default=PaymentStatus.PENDING, index=True, nullable=False
@@ -183,6 +200,7 @@ class Payment(Base):
     def is_final(self) -> bool:
         return self.status in (
             PaymentStatus.APPROVED, PaymentStatus.REJECTED,
+            PaymentStatus.FAILED, PaymentStatus.CANCELLED,
             PaymentStatus.REFUNDED, PaymentStatus.EXPIRED,
         )
 

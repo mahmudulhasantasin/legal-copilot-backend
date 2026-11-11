@@ -24,11 +24,16 @@ from app.models.user import (
     WithdrawalRequest, WithdrawalStatus,
 )
 from app.models.lawyer import LawyerProfile, LawyerStatus
-from app.models.playbook import Enterprise, EnterpriseStatus
+from app.models.playbook import Enterprise, EnterpriseStatus, CreditPackage
 from app.models.audit import (
-    Payment, PaymentStatus,
+    Payment, PaymentMethod, PaymentStatus,
     AuditLog, AuditAction, AuditSeverity,
 )
+from app.services.payment_fulfillment import (
+    fulfill_approved_payment,
+    verify_sslcommerz_and_fulfill,
+)
+from app.services.sslcommerz import SSLCommerzGatewayError, sslcommerz_service
 
 # ✅ FIX: ইমেইল সার্ভিস ইমপোর্ট করা হলো
 from app.services.email_service import (
@@ -427,8 +432,121 @@ async def reject_enterprise(
 
 
 # ──────────────────────────────────────────────────────────
-# PAYMENT VERIFICATION (bKash Manual)
 # ──────────────────────────────────────────────────────────
+# PAYMENTS & GATEWAY LEDGER (SSLCommerz + Legacy)
+# ──────────────────────────────────────────────────────────
+
+@router.get("/payments")
+async def list_all_payments(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    search: Optional[str] = Query(None),
+    limit: int = Query(100, le=300),
+    offset: int = Query(0, ge=0),
+    admin: User = Depends(check_is_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Full gateway payment ledger with SSLCommerz telemetry (val_id, bank_tran_id, card_type)."""
+    stmt = (
+        select(Payment, User, Enterprise, CreditPackage.name)
+        .outerjoin(User, Payment.user_id == User.id)
+        .outerjoin(Enterprise, Payment.enterprise_id == Enterprise.id)
+        .outerjoin(CreditPackage, Payment.package_id == CreditPackage.id)
+    )
+
+    if status_filter:
+        try:
+            st = PaymentStatus(status_filter.upper())
+            stmt = stmt.where(Payment.status == st)
+        except ValueError:
+            raise HTTPException(400, f"Invalid payment status: {status_filter}")
+
+    if search:
+        like = f"%{search.strip().lower()}%"
+        stmt = stmt.where(
+            func.lower(Payment.reference_code).like(like)
+            | func.lower(func.coalesce(Payment.val_id, "")).like(like)
+            | func.lower(func.coalesce(Payment.bank_tran_id, "")).like(like)
+            | func.lower(func.coalesce(Payment.trx_id, "")).like(like)
+            | func.lower(func.coalesce(User.email, "")).like(like)
+            | func.lower(func.coalesce(User.full_name, "")).like(like)
+        )
+
+    stmt = stmt.order_by(desc(Payment.created_at)).limit(limit).offset(offset)
+    rows = (await db.execute(stmt)).all()
+
+    return [
+        {
+            "payment_id": p.id,
+            "reference_code": p.reference_code,
+            "method": p.method.value,
+            "purpose": p.purpose.value,
+            "status": p.status.value,
+            "amount_bdt": float(p.amount_bdt),
+            "store_amount_bdt": float(p.store_amount_bdt) if p.store_amount_bdt is not None else None,
+            "total_credits": p.total_credits,
+            "package_name": pkg_name,
+            "payer_type": "enterprise" if p.enterprise_id else "user",
+            "user_id": p.user_id,
+            "user_name": u.full_name if u else None,
+            "user_email": u.email if u else None,
+            "enterprise_id": p.enterprise_id,
+            "enterprise_name": ent.name if ent else None,
+            "sender_number": p.sender_number,
+            "trx_id": p.trx_id,
+            "gateway_session_key": p.gateway_session_key,
+            "val_id": p.val_id,
+            "bank_tran_id": p.bank_tran_id,
+            "card_type": p.card_type,
+            "card_issuer": p.card_issuer,
+            "card_brand": p.card_brand,
+            "gateway_status": p.gateway_status,
+            "admin_note": p.admin_note,
+            "created_at": p.created_at,
+            "gateway_validated_at": p.gateway_validated_at,
+            "reviewed_at": p.reviewed_at,
+        }
+        for p, u, ent, pkg_name in rows
+    ]
+
+
+@router.post("/payments/{payment_id}/reconcile")
+async def reconcile_sslcommerz_payment(
+    payment_id: int,
+    admin: User = Depends(check_is_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Queries SSLCommerz directly for a pending payment and grants credits if VALID."""
+    p = await db.scalar(select(Payment).where(Payment.id == payment_id))
+    if not p:
+        raise HTTPException(404, "Payment not found.")
+    if p.status == PaymentStatus.APPROVED:
+        return {"status": "APPROVED", "credits_granted": p.total_credits, "message": "Already approved."}
+    if not sslcommerz_service.is_configured():
+        raise HTTPException(503, "SSLCommerz credentials are not configured on the server.")
+
+    try:
+        success, updated, code = await verify_sslcommerz_and_fulfill(
+            db,
+            tran_id=p.reference_code,
+            val_id=p.val_id,
+            verify_signature=False,
+        )
+    except SSLCommerzGatewayError as exc:
+        raise HTTPException(502, str(exc))
+
+    if success and updated:
+        return {
+            "status": "APPROVED",
+            "credits_granted": updated.total_credits,
+            "message": f"Reconciled via SSLCommerz ({code}).",
+        }
+    return {
+        "status": updated.status.value if updated else p.status.value,
+        "credits_granted": 0,
+        "code": code,
+        "message": f"Payment not validated at SSLCommerz ({code}).",
+    }
+
 
 @router.get("/payments/pending")
 async def list_pending_payments(
@@ -465,73 +583,16 @@ async def approve_payment(
     admin: User = Depends(check_is_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Grants credits to user or enterprise wallet."""
-    p = await db.scalar(
-        select(Payment).where(Payment.id == payment_id).with_for_update()
-    )
-    if not p:
-        raise HTTPException(404, "Payment not found.")
-    if p.status != PaymentStatus.PENDING_VERIFICATION:
-        raise HTTPException(400, f"Cannot approve. Status: {p.status.value}")
-
-    credits = p.total_credits
-    before = {"status": p.status.value, "credits_granted": 0}
-
-    # ── Grant to enterprise pool ──
-    if p.enterprise_id:
-        ent = await db.scalar(
-            select(Enterprise).where(Enterprise.id == p.enterprise_id).with_for_update()
-        )
-        if not ent:
-            raise HTTPException(404, "Enterprise not found.")
-        ent.credit_balance += credits
-        if credits >= 11500:
-            ent.member_limit = max(ent.member_limit, 10)
-        elif credits >= 5500:
-            ent.member_limit = max(ent.member_limit, 5)
-        db.add(CreditTransaction(
-            enterprise_id=ent.id,
-            amount=+credits,
-            balance_after=ent.credit_balance,
-            tx_type=CreditTxType.TOPUP_MANUAL,
-            description=f"bKash topup approved (Ref: {p.reference_code})",
-            reference_id=p.reference_code,
-            performed_by_id=admin.id,
-        ))
-    # ── Grant to personal wallet ──
-    elif p.user_id:
-        u = await db.scalar(
-            select(User).where(User.id == p.user_id).with_for_update()
-        )
-        if not u:
-            raise HTTPException(404, "User not found.")
-        u.credit_balance += credits
-        db.add(CreditTransaction(
-            user_id=u.id,
-            amount=+credits,
-            balance_after=u.credit_balance,
-            tx_type=CreditTxType.TOPUP_MANUAL,
-            description=f"bKash topup approved (Ref: {p.reference_code})",
-            reference_id=p.reference_code,
-            performed_by_id=admin.id,
-        ))
-    else:
-        raise HTTPException(400, "Payment has no payer assigned.")
-
-    p.status = PaymentStatus.APPROVED
-    p.reviewed_at = datetime.now(timezone.utc)
-    p.reviewed_by_id = admin.id
-    p.admin_note = payload.admin_note
-
-    await log_action(
-        db, admin, AuditAction.PAYMENT_APPROVED,
-        target_entity="payment", target_id=p.id,
-        description=f"Approved {p.reference_code} → +{credits} credits",
-        before=before,
-        after={"status": p.status.value, "credits_granted": credits},
+    """Grants credits to user or enterprise wallet (delegates to shared atomic service)."""
+    result = await fulfill_approved_payment(
+        db,
+        payment_id,
+        actor=admin,
+        admin_note=payload.admin_note,
+        allowed_statuses=(PaymentStatus.PENDING_VERIFICATION,),
     )
     await db.commit()
-    return {"status": "success", "credits_granted": credits}
+    return {"status": "success", "credits_granted": result["credits_granted"]}
 
 
 @router.post("/payments/{payment_id}/reject")
@@ -575,7 +636,11 @@ async def list_pending_withdrawals(
         select(WithdrawalRequest, LawyerProfile, User)
         .join(LawyerProfile, WithdrawalRequest.lawyer_id == LawyerProfile.id)
         .join(User, LawyerProfile.user_id == User.id)
-        .where(WithdrawalRequest.status == WithdrawalStatus.PENDING)
+        .where(
+            WithdrawalRequest.status.in_(
+                [WithdrawalStatus.PENDING, WithdrawalStatus.APPROVED]
+            )
+        )
         .order_by(WithdrawalRequest.requested_at.asc())
     )
     rows = (await db.execute(stmt)).all()
@@ -586,8 +651,13 @@ async def list_pending_withdrawals(
             "lawyer_name": u.full_name,
             "lawyer_email": u.email,
             "amount_bdt": float(w.amount_bdt),
+            "payout_method": w.payout_method or "BKASH",
+            "account_number": w.account_number or w.bkash_number,
             "bkash_number": w.bkash_number,
+            "bank_name": w.bank_name,
+            "branch_name": w.branch_name,
             "account_holder_name": w.account_holder_name,
+            "status": w.status.value,
             "requested_at": w.requested_at,
         }
         for w, _, u in rows
@@ -668,7 +738,7 @@ async def mark_withdrawal_paid(
     await log_action(
         db, admin, AuditAction.WITHDRAWAL_PAID,
         target_entity="withdrawal", target_id=w.id,
-        description=f"Paid ৳{w.amount_bdt} via bKash {payload.payout_trx_id}",
+        description=f"Paid ৳{w.amount_bdt} via {w.payout_method or 'BKASH'} ({payload.payout_trx_id})",
     )
     await db.commit()
     return {"status": "success", "payout_trx_id": payload.payout_trx_id}
