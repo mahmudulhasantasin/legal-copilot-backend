@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import re
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Optional
@@ -20,6 +21,37 @@ import httpx
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
+
+
+def _sanitize_ssl_text(value: Optional[str], default: str, max_len: int) -> str:
+    """Sanitize customer/product text to ASCII characters accepted by SSLCommerz v4."""
+    cleaned = re.sub(r"[^A-Za-z0-9 .,\-_()/]", " ", value or "")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if len(cleaned) < 2:
+        return default[:max_len]
+    return cleaned[:max_len]
+
+
+def _sanitize_ssl_email(value: Optional[str]) -> str:
+    """Return a valid <=50 char email for SSLCommerz without chopping long domains."""
+    email = (value or "").strip()
+    if email and len(email) <= 50 and _EMAIL_RE.fullmatch(email):
+        return email
+    return "billing@contractmind.ai"
+
+
+def _sanitize_ssl_phone(value: Optional[str]) -> str:
+    """Normalize customer phone into digits suitable for SSLCommerz v4."""
+    digits = re.sub(r"[^\d]", "", value or "")
+    if digits.startswith("00880") and len(digits) == 15:
+        digits = "0" + digits[5:]
+    elif digits.startswith("880") and len(digits) == 13:
+        digits = "0" + digits[3:]
+    if len(digits) < 6 or len(digits) > 20:
+        return "01700000000"
+    return digits[:20]
 
 
 class SSLCommerzConfigError(Exception):
@@ -152,16 +184,16 @@ class SSLCommerzService:
             "cancel_url": cancel_url,
             "ipn_url": ipn_url,
             "emi_option": 0,
-            "cus_name": (customer_name or "Customer")[:50],
-            "cus_email": (customer_email or "billing@contractmind.ai")[:50],
-            "cus_phone": (customer_phone or "01700000000")[:20],
+            "cus_name": _sanitize_ssl_text(customer_name, "Customer", 50),
+            "cus_email": _sanitize_ssl_email(customer_email),
+            "cus_phone": _sanitize_ssl_phone(customer_phone),
             "cus_add1": "Dhaka",
             "cus_city": "Dhaka",
             "cus_country": "Bangladesh",
             "shipping_method": "NO",
             "num_of_item": 1,
-            "product_name": (product_name or "Credit Package")[:250],
-            "product_category": product_category[:100],
+            "product_name": _sanitize_ssl_text(product_name, "Credit Package", 250),
+            "product_category": _sanitize_ssl_text(product_category, "Legal AI Credits", 100),
             "product_profile": "non-physical-goods",
             "value_a": value_a[:250],
             "value_b": value_b[:250],

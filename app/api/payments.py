@@ -64,11 +64,15 @@ def _generate_reference_code() -> str:
 def _normalize_bd_phone(raw: Optional[str]) -> Optional[str]:
     if not raw:
         return None
-    cleaned = raw.strip().replace(" ", "").replace("-", "")
+    cleaned = re.sub(r"[\s\-()]", "", raw.strip())
     if cleaned.startswith("+880"):
         cleaned = "0" + cleaned[4:]
+    elif cleaned.startswith("00880"):
+        cleaned = "0" + cleaned[5:]
     elif cleaned.startswith("880"):
         cleaned = "0" + cleaned[3:]
+    elif cleaned.startswith("1") and len(cleaned) == 10:
+        cleaned = "0" + cleaned
     return cleaned or None
 
 
@@ -296,9 +300,6 @@ async def initiate_payment(
             "Enterprise members share their company credit pool. Please ask your Enterprise Admin to top up.",
         )
 
-    if current_user.role == UserRole.LAWYER:
-        raise HTTPException(403, "Lawyer accounts cannot purchase client credit packages.")
-
     if not payload.package_id and not ALLOW_CUSTOM_TOPUP:
         raise HTTPException(400, "Custom top-up is disabled. Please select a package.")
 
@@ -320,6 +321,11 @@ async def initiate_payment(
             )
         resolved_phone = provided_phone
     elif profile_phone:
+        if not _is_valid_bd_phone(profile_phone):
+            raise HTTPException(
+                400,
+                "Your profile phone number is invalid for checkout. Please enter a valid Bangladeshi mobile number (e.g. 017XXXXXXXX).",
+            )
         resolved_phone = profile_phone
     else:
         raise HTTPException(
@@ -349,9 +355,10 @@ async def initiate_payment(
             raise HTTPException(404, "Package not found or inactive.")
 
         is_enterprise = current_user.role == UserRole.ENTERPRISE_ADMIN
-        if pkg.applies_to == "ENTERPRISE" and not is_enterprise:
+        applies_to = (pkg.applies_to or "ALL").strip().upper()
+        if applies_to == "ENTERPRISE" and not is_enterprise:
             raise HTTPException(400, "This package is not available for your account.")
-        if pkg.applies_to == "GENERAL" and is_enterprise:
+        if applies_to == "GENERAL" and is_enterprise:
             raise HTTPException(400, "This package is not available for enterprises.")
 
         amount_bdt = Decimal(pkg.price_bdt)

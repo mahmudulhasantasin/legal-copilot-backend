@@ -252,10 +252,10 @@ async def _lock_enterprise(db: AsyncSession, enterprise_id: int) -> "Enterprise"
 def _reset_lawyer_monthly_pool_if_needed(user: "User") -> None:
     now = datetime.now(timezone.utc)
     first_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    if (
-        user.monthly_free_chat_reset_at is None
-        or user.monthly_free_chat_reset_at < first_of_month
-    ):
+    reset_at = user.monthly_free_chat_reset_at
+    if reset_at is not None and reset_at.tzinfo is None:
+        reset_at = reset_at.replace(tzinfo=timezone.utc)
+    if reset_at is None or reset_at < first_of_month:
         user.monthly_free_chat_used = 0
         user.monthly_free_chat_reset_at = first_of_month
 
@@ -287,7 +287,7 @@ async def check_and_deduct_credits(
         locked_user = await _lock_user(db, user.id)
         _reset_lawyer_monthly_pool_if_needed(locked_user)
 
-        remaining_pool = LAWYER_MONTHLY_FREE_CHAT_CREDITS - locked_user.monthly_free_chat_used
+        remaining_pool = max(0, LAWYER_MONTHLY_FREE_CHAT_CREDITS - locked_user.monthly_free_chat_used)
         if remaining_pool >= cost:
             locked_user.monthly_free_chat_used += cost
             if commit:
@@ -295,26 +295,61 @@ async def check_and_deduct_credits(
             return {"source": "monthly_pool", "deducted": cost, "remaining": remaining_pool - cost}
 
         from_pool = remaining_pool
-        from_wallet = cost - from_pool
-        locked_user.monthly_free_chat_used += from_pool
+        remainder = cost - from_pool
+        personal_credits = max(0, int(locked_user.credit_balance or 0))
+
+        # Spend purchased/personal credit_balance before touching earned review wallet_balance
+        if personal_credits >= remainder:
+            locked_user.monthly_free_chat_used += from_pool
+            locked_user.credit_balance -= remainder
+            db.add(CreditTransaction(
+                user_id=user.id,
+                amount=-remainder,
+                balance_after=locked_user.credit_balance,
+                tx_type=CreditTxType(tx_type),
+                description=description or "Lawyer credit balance spend",
+                reference_id=reference_id,
+            ))
+            if commit:
+                await db.commit()
+            return {
+                "source": "monthly_pool+credit_balance" if from_pool > 0 else "credit_balance",
+                "deducted": cost,
+                "remaining": locked_user.credit_balance,
+            }
 
         prof_stmt = select(LawyerProfile).where(LawyerProfile.user_id == user.id).with_for_update()
         profile = (await db.execute(prof_stmt)).scalar_one_or_none()
         if not profile:
-            raise CreditError("Lawyer profile missing.")
+            raise CreditError(
+                f"Insufficient credits. Need {cost}, have {remaining_pool} free + {personal_credits} credits."
+            )
 
-        wallet_credits = int(profile.wallet_balance)
-        if wallet_credits < from_wallet:
-            raise CreditError(f"Insufficient credits. Need {cost}, have {remaining_pool} free + {wallet_credits} wallet.")
+        wallet_credits = max(0, int(profile.wallet_balance))
+        total_available = remaining_pool + personal_credits + wallet_credits
+        if total_available < cost:
+            raise CreditError(
+                f"Insufficient credits. Need {cost}, have {remaining_pool} free + {personal_credits} credits + {wallet_credits} wallet."
+            )
+
+        from_personal = personal_credits
+        from_wallet = remainder - from_personal
+        locked_user.monthly_free_chat_used += from_pool
+        if from_personal > 0:
+            locked_user.credit_balance -= from_personal
         profile.wallet_balance -= from_wallet
 
         db.add(CreditTransaction(
-            user_id=user.id, amount=-cost, balance_after=wallet_credits - from_wallet,
-            tx_type=CreditTxType(tx_type), description=description or "Lawyer chat beyond free pool", reference_id=reference_id,
+            user_id=user.id,
+            amount=-(from_personal + from_wallet),
+            balance_after=locked_user.credit_balance,
+            tx_type=CreditTxType(tx_type),
+            description=description or "Lawyer chat beyond free pool",
+            reference_id=reference_id,
         ))
         if commit:
             await db.commit()
-        return {"source": "monthly_pool+wallet", "deducted": cost, "remaining": 0}
+        return {"source": "monthly_pool+wallet", "deducted": cost, "remaining": locked_user.credit_balance}
 
     if user.role in (UserRole.ENTERPRISE_ADMIN, UserRole.ENTERPRISE_MEMBER):
         if not user.enterprise_id:
