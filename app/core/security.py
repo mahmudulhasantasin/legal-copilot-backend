@@ -371,6 +371,7 @@ async def refund_credits(
     reference_id: Optional[str] = None,
     *,
     enterprise_id: Optional[int] = None,
+    commit: bool = True,
 ) -> int:
     from app.models.user import CreditTransaction, CreditTxType
 
@@ -384,7 +385,8 @@ async def refund_credits(
             enterprise_id=ent.id, user_id=user.id if user else None, amount=+amount, balance_after=ent.credit_balance,
             tx_type=CreditTxType.REFUND, description=reason, reference_id=reference_id,
         ))
-        await db.commit()
+        if commit:
+            await db.commit()
         return ent.credit_balance
 
     locked_user = await _lock_user(db, user.id)
@@ -393,7 +395,8 @@ async def refund_credits(
         user_id=user.id, amount=+amount, balance_after=locked_user.credit_balance,
         tx_type=CreditTxType.REFUND, description=reason, reference_id=reference_id,
     ))
-    await db.commit()
+    if commit:
+        await db.commit()
     return locked_user.credit_balance
 
 

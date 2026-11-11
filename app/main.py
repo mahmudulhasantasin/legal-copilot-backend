@@ -64,25 +64,7 @@ async def lifespan(app: FastAPI):
 
     # Ensure new tables and newly added columns are migrated
     try:
-        from app.core.database import engine, Base
-        try:
-            async with engine.connect() as auto_conn:
-                await auto_conn.execution_options(isolation_level="AUTOCOMMIT")
-                for enum_stmt in (
-                    "ALTER TYPE paymentpurpose ADD VALUE IF NOT EXISTS 'ENTERPRISE_TOPUP';",
-                    "ALTER TYPE paymentmethod ADD VALUE IF NOT EXISTS 'SSLCOMMERZ';",
-                    "ALTER TYPE paymentstatus ADD VALUE IF NOT EXISTS 'FAILED';",
-                    "ALTER TYPE paymentstatus ADD VALUE IF NOT EXISTS 'CANCELLED';",
-                    "ALTER TYPE credittxtype ADD VALUE IF NOT EXISTS 'TOPUP_SSLCOMMERZ';",
-                    "ALTER TYPE auditaction ADD VALUE IF NOT EXISTS 'PAYMENT_FAILED';",
-                    "ALTER TYPE auditaction ADD VALUE IF NOT EXISTS 'PAYMENT_CANCELLED';",
-                ):
-                    try:
-                        await auto_conn.execute(text(enum_stmt))
-                    except Exception as inner_enum_err:
-                        logger.warning(f"Enum migration note ({enum_stmt}): {inner_enum_err}")
-        except Exception as enum_err:
-            logger.warning(f"Enum migration note: {enum_err}")
+        from app.core.database import engine, Base, sync_postgres_enums
 
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
@@ -127,6 +109,7 @@ async def lifespan(app: FastAPI):
                 except Exception as sql_err:
                     logger.warning(f"Migration note ({sql}): {sql_err}")
 
+        await sync_postgres_enums(engine, log=logger)
         logger.info("✅ Database tables and columns verified/migrated.")
     except Exception as db_err:
         logger.warning(f"Database schema auto-sync note: {db_err}")
@@ -215,7 +198,7 @@ app.include_router(inquiries.router)
 # SYSTEM HEALTH & ROOT
 # ──────────────────────────────────────────────────────────
 
-@app.get("/", tags=["System"])
+@app.api_route("/", methods=["GET", "HEAD"], tags=["System"])
 async def root():
     return {
         "app": "ContractMind API",

@@ -395,6 +395,7 @@ async def request_lawyer_verification(
             reason="No eligible lawyers available at this time.",
             reference_id=str(memo.id),
             enterprise_id=refund_enterprise_id,
+            commit=False,
         )
 
         memo.hitl_status = HITLStatus.REFUNDED

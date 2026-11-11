@@ -143,6 +143,7 @@ async def process_sla_breaches(db: AsyncSession):
                     db=db, user=client_user, amount=memo.hitl_credits_paid,
                     reason=f"Auto-refund: SLA breached for Memo #{memo.id}", reference_id=str(memo.id),
                     enterprise_id=contract.enterprise_id if client_user.is_enterprise_user else None,
+                    commit=False,
                 )
         memo.hitl_status = HITLStatus.REFUNDED
         memo.refunded_at = now
