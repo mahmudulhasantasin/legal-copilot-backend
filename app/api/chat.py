@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -10,6 +11,7 @@ from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from langchain_core.messages import HumanMessage, AIMessage
 
+from app.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_user, check_and_deduct_credits, detect_language
 from app.core.tier_limits import (
@@ -59,6 +61,9 @@ class CreateSessionRequest(BaseModel):
     mode: str = Field(default="GENERAL", description="GENERAL, LAWYER_RESEARCH, or USER_CONTRACT")
     title: Optional[str] = None
     contract_id: Optional[int] = None
+
+class RenameSessionRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
 
 class QueryRequest(BaseModel):
     session_id: int
@@ -264,6 +269,7 @@ async def list_sessions(
             "mode": s.session_mode,
             "message_count": s.message_count,
             "message_limit": s.session_limit,
+            "created_at": s.created_at,
             "updated_at": s.updated_at,
         }
         for s in rows
@@ -309,6 +315,28 @@ async def get_session_history(
     }
 
 
+@router.patch("/sessions/{session_id}")
+async def rename_session(
+    session_id: int,
+    payload: RenameSessionRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    session = await db.scalar(
+        select(ChatSession).where(
+            ChatSession.id == session_id,
+            ChatSession.user_id == current_user.id,
+            ChatSession.is_closed == False,
+        )
+    )
+    if not session:
+        raise HTTPException(404, "Session not found.")
+
+    session.title = payload.title.strip()
+    await db.commit()
+    return {"session_id": session.id, "title": session.title}
+
+
 @router.post("/sessions/{session_id}/close")
 async def close_session(
     session_id: int,
@@ -330,6 +358,192 @@ async def close_session(
 
 
 # ──────────────────────────────────────────────────────────
+def _lookup_statute_sync(act_name: str, section_number: str) -> Dict[str, Any]:
+    """
+    Fetches the full verbatim statutory provision from Qdrant Cloud for popup inspection.
+    Reuses act alias resolution + section variant normalization (0 credit cost).
+    """
+    from qdrant_client import models
+    from app.services.legal_normalizer import (
+        resolve_act_robust,
+        get_section_variants,
+        normalize_section,
+    )
+    from app.services.vector_store import vector_manager
+
+    clean_act = (act_name or "").strip()
+    clean_sec = (section_number or "").strip()
+    act_stored = resolve_act_robust(clean_act) if clean_act else None
+
+    sec_variants = get_section_variants(clean_sec)
+    norm_sec = normalize_section(clean_sec)
+    if norm_sec and norm_sec not in sec_variants:
+        sec_variants.append(norm_sec)
+
+    base_sec = re.split(r"[(\-\s]", norm_sec)[0].strip() if norm_sec else ""
+    if base_sec:
+        for v in get_section_variants(base_sec):
+            if v not in sec_variants:
+                sec_variants.append(v)
+
+    if not sec_variants and clean_sec:
+        sec_variants = [clean_sec]
+
+    def _collect_points(points, require_act_match: bool) -> Dict[str, Any]:
+        chunks: List[str] = []
+        seen_texts = set()
+        resolved_act = ""
+        resolved_sec = ""
+        resolved_title = ""
+        resolved_url = ""
+
+        act_tokens = [
+            t for t in re.findall(r"[\w\u0980-\u09FF]{3,}", clean_act.lower())
+            if t not in ("the", "act", "ordinance", "code", "rules", "bangladesh")
+        ]
+
+        for pt in points:
+            payload = getattr(pt, "payload", None) or {}
+            metadata = payload.get("metadata", {}) or {}
+            pt_act = str(metadata.get("act") or payload.get("act") or "").strip()
+
+            if require_act_match and clean_act:
+                low_pt_act = pt_act.lower()
+                if clean_act.lower() not in low_pt_act and low_pt_act not in clean_act.lower():
+                    if act_tokens and not any(tok in low_pt_act for tok in act_tokens):
+                        continue
+
+            text_val = str(payload.get("text") or payload.get("content") or "").strip()
+            if not text_val or text_val in seen_texts:
+                continue
+
+            seen_texts.add(text_val)
+            chunks.append(text_val)
+            if not resolved_act:
+                resolved_act = pt_act
+            if not resolved_sec:
+                resolved_sec = str(metadata.get("section") or payload.get("section") or "").strip()
+            if not resolved_title:
+                resolved_title = str(metadata.get("title") or payload.get("title") or "").strip()
+            if not resolved_url:
+                resolved_url = str(
+                    metadata.get("url")
+                    or metadata.get("bdlaws_url")
+                    or payload.get("url")
+                    or ""
+                ).strip()
+
+        if not chunks:
+            return {"found": False}
+
+        return {
+            "found": True,
+            "act": resolved_act or clean_act or "Bangladesh Statute",
+            "section": resolved_sec or clean_sec,
+            "title": resolved_title or "Statutory Provision",
+            "verbatim_text": "\n\n".join(chunks),
+            "bdlaws_url": resolved_url or "http://bdlaws.minlaw.gov.bd/laws-of-bangladesh.html",
+            "status": "Verified against Bangladesh Statutory Gazette",
+        }
+
+    try:
+        client = vector_manager.client
+
+        if sec_variants:
+            must_conditions = [
+                models.FieldCondition(
+                    key="metadata.section_norm",
+                    match=models.MatchAny(any=sec_variants),
+                )
+            ]
+            if act_stored:
+                must_conditions.insert(
+                    0,
+                    models.FieldCondition(
+                        key="metadata.act_norm",
+                        match=models.MatchValue(value=act_stored),
+                    ),
+                )
+
+            points, _ = client.scroll(
+                collection_name=settings.QDRANT_COLLECTION_NAME,
+                scroll_filter=models.Filter(must=must_conditions),
+                limit=10,
+                with_payload=True,
+                with_vectors=False,
+            )
+            matched = _collect_points(points, require_act_match=not bool(act_stored))
+            if matched.get("found"):
+                return matched
+
+            # Fallback: section-only scroll across all acts when strict alias misses
+            if act_stored:
+                fallback_points, _ = client.scroll(
+                    collection_name=settings.QDRANT_COLLECTION_NAME,
+                    scroll_filter=models.Filter(
+                        must=[
+                            models.FieldCondition(
+                                key="metadata.section_norm",
+                                match=models.MatchAny(any=sec_variants),
+                            )
+                        ]
+                    ),
+                    limit=15,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+                matched = _collect_points(fallback_points, require_act_match=True)
+                if matched.get("found"):
+                    return matched
+
+        # Final fallback: semantic similarity lookup constrained to the requested section
+        search_query = f"{clean_act} {clean_sec}".strip()
+        if search_query:
+            hits = vector_manager.similarity_search(search_query, limit=6)
+            for hit in hits:
+                hit_sec = normalize_section(str(hit.get("section") or ""))
+                hit_act = str(hit.get("act") or "").lower()
+                if base_sec and base_sec not in hit_sec:
+                    continue
+                if clean_act and (not act_stored or act_stored.lower() not in hit_act):
+                    tokens = [t for t in re.findall(r"[\w\u0980-\u09FF]{3,}", clean_act.lower())]
+                    if tokens and not any(tok in hit_act for tok in tokens):
+                        continue
+                verbatim = str(hit.get("text") or hit.get("content") or "").strip()
+                if verbatim:
+                    return {
+                        "found": True,
+                        "act": hit.get("act") or clean_act,
+                        "section": hit.get("section") or clean_sec,
+                        "title": hit.get("title") or "Statutory Provision",
+                        "verbatim_text": verbatim,
+                        "bdlaws_url": "http://bdlaws.minlaw.gov.bd/laws-of-bangladesh.html",
+                        "status": "Verified against Bangladesh Statutory Gazette",
+                    }
+    except Exception as exc:
+        logger.warning(f"[Chat Statute Lookup] Qdrant lookup failed: {exc}")
+
+    return {
+        "found": False,
+        "act": clean_act,
+        "section": clean_sec,
+        "title": "Statutory Provision",
+        "verbatim_text": "",
+        "bdlaws_url": "http://bdlaws.minlaw.gov.bd/laws-of-bangladesh.html",
+        "status": "Summary Only",
+    }
+
+
+@router.get("/statute-lookup", response_model=dict)
+async def lookup_statute_section(
+    section: str = Query(..., min_length=1, max_length=100),
+    act: str = Query("", max_length=300),
+    current_user: User = Depends(get_current_user),
+):
+    """Fetch full verbatim text of a statutory section for the UI popup drawer (0 credits)."""
+    return await asyncio.to_thread(_lookup_statute_sync, act, section)
+
+
 # ENDPOINT: QUERY (Main Chat)
 # ──────────────────────────────────────────────────────────
 
