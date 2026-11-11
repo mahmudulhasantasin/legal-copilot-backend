@@ -85,14 +85,14 @@ def get_llm() -> BaseChatModel:
     else:
         logger.warning("GEMINI_API_KEY is not configured in environment or settings.")
 
-    # 2. Fallback: Groq (llama-3.3-70b-versatile avoids qwen/qwen3.8-27b's strict 1000 OTPM limit)
+    # 2. Fallback: Groq (kept qwen/qwen3.8-27b; max_tokens capped under 1000 OTPM limit)
     if groq_key:
         try:
             groq_llm = ChatGroq(
-                model="llama-3.3-70b-versatile",
+                model="qwen/qwen3.8-27b",
                 api_key=groq_key,
                 temperature=0.1,
-                max_tokens=2000,
+                max_tokens=950,
                 max_retries=1,
                 timeout=45.0,
             )
