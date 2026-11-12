@@ -239,9 +239,11 @@ def _build_default_llm() -> Optional[BaseChatModel]:
                 model="gemini-3.5-flash-lite",
                 google_api_key=gemini_key,
                 temperature=0.1,
-                max_output_tokens=3000,
+                # Free tier comfortably supports 8K output (250K TPM / 500 RPD);
+                # 3000 truncated full-contract audit JSON (17+ clause risks).
+                max_output_tokens=8000,
                 max_retries=2,
-                timeout=60.0,
+                timeout=90.0,
             )
             logger.info("Gemini primary LLM initialized successfully.")
         except Exception as exc:
@@ -257,6 +259,10 @@ def _build_default_llm() -> Optional[BaseChatModel]:
                 api_key=groq_key,
                 temperature=0.1,
                 max_tokens=950,
+                # qwen3 is a reasoning model — without this its thinking tokens
+                # eat the 950-token output budget and the audit JSON truncates
+                # (verified: reasoning_effort="none" → finish_reason=stop, ~205 tokens).
+                reasoning_effort="none",
                 max_retries=1,
                 timeout=45.0,
             )
@@ -287,7 +293,7 @@ def get_llm() -> BaseChatModel:
         colab_model = str(_env_or_setting("COLAB_LLM_MODEL", "gemma4:e4b") or "gemma4:e4b").strip()
         colab_api_key = str(_env_or_setting("COLAB_LLM_API_KEY", "colab-local") or "").strip()
         colab_timeout = float(_env_or_setting("COLAB_LLM_TIMEOUT", 120.0) or 120.0)
-        colab_max_tokens = int(_env_or_setting("COLAB_LLM_MAX_TOKENS", 3000) or 3000)
+        colab_max_tokens = int(_env_or_setting("COLAB_LLM_MAX_TOKENS", 8000) or 8000)
         fallback_raw = _env_or_setting("COLAB_LLM_FALLBACK", False)
         use_fallback = (
             fallback_raw

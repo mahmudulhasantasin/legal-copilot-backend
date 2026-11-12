@@ -2,7 +2,7 @@ import json
 import asyncio
 import re
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from app.services.retriever import hybrid_retriever
 from app.services.llm_provider import get_llm
@@ -111,11 +111,36 @@ async def retrieve_statutes_node(state: dict) -> dict:
     return {"retrieved_statutes": retrieved_laws}
 
 
+def _extract_finish_reason(response: Any) -> Optional[str]:
+    """Best-effort extraction of the provider finish/stop reason (truncation detection)."""
+    try:
+        meta = getattr(response, "response_metadata", None) or {}
+        fr = meta.get("finish_reason")
+        if not fr:
+            candidates = meta.get("candidates") or []
+            if candidates:
+                fr = candidates[0].get("finish_reason")
+        if not fr:
+            generations = getattr(response, "generations", None) or []
+            if generations:
+                info = getattr(generations[0], "generation_info", None) or {}
+                fr = info.get("finish_reason")
+                if not fr:
+                    candidates = info.get("candidates") or []
+                    if candidates:
+                        fr = candidates[0].get("finish_reason")
+        return str(fr).upper() if fr else None
+    except Exception:
+        return None
+
+
 async def analyze_risk_node(state: dict) -> dict:
     """
     LLM Analysis Node (async):
     Audits structured clauses under Bangladesh statutory laws and Playbook rules
     from the specific party perspective (CLIENT / VENDOR / NEUTRAL).
+    If the JSON output was truncated by the output-token cap, retries once with
+    a reduced clause batch so partial audits degrade gracefully.
     """
     contract_text = state.get("contract_text", "")[:CHUNK_SIZE]
     statutes = state.get("retrieved_statutes", [])
@@ -124,15 +149,20 @@ async def analyze_risk_node(state: dict) -> dict:
     domain_name = state.get("domain_name", "Commercial Agreement")
     structured_clauses = state.get("structured_clauses", [])
 
-    # 1. Statutory context
-    if statutes:
-        laws_context = "\n\n".join([
-            f"- [{law.get('act', 'Bangladesh Statute')} | {law.get('section', 'Section')} - {law.get('title', '')}]:\n"
-            f"  \"{law.get('text', law.get('content', '')).strip()}\""
-            for law in statutes
-        ])
-    else:
-        laws_context = (
+    # 1. Statutory context (full for primary LLM; compact for small-input fallback models)
+    def _build_laws_context(law_list: List[Dict[str, Any]], max_laws: Optional[int] = None, max_chars: Optional[int] = None) -> str:
+        if law_list:
+            entries = []
+            for law in (law_list[:max_laws] if max_laws else law_list):
+                text = law.get('text', law.get('content', '')).strip()
+                if max_chars and len(text) > max_chars:
+                    text = text[:max_chars] + "…"
+                entries.append(
+                    f"- [{law.get('act', 'Bangladesh Statute')} | {law.get('section', 'Section')} - {law.get('title', '')}]:\n"
+                    f"  \"{text}\""
+                )
+            return "\n\n".join(entries)
+        return (
             "Apply mandatory codified provisions of Bangladesh Law:\n"
             "- The Contract Act, 1872 (Section 27 Restraint of Trade, Section 28 Legal Proceedings, "
             "Section 56 Frustration, Section 74 Liquidated Damages/Penalties).\n"
@@ -140,6 +170,9 @@ async def analyze_risk_node(state: dict) -> dict:
             "- Cyber Security Act, 2023 / ICT Act, 2006 (Data privacy and breach notification).\n"
             "- Arbitration Act, 2001 (Dispute resolution)."
         )
+
+    laws_context = _build_laws_context(statutes)
+    laws_context_compact = _build_laws_context(statutes, max_laws=3, max_chars=600)
 
     # 2. Enterprise Playbook context
     playbook_context = ""
@@ -158,52 +191,103 @@ async def analyze_risk_node(state: dict) -> dict:
             "In 'violated_law' cite the rule ID (e.g. \"Internal Playbook RULE-CAT-01\").\n"
         )
 
-    # 3. Formatted Clause Text (if structured AST is present)
-    if structured_clauses:
-        formatted_contract = "\n\n".join([
-            f"### CLAUSE {c.get('source_clause_number', idx)}: {c.get('clause_title', f'Clause {idx}')}\n"
-            f"{c.get('clause_text', '')}"
-            for idx, c in enumerate(structured_clauses, start=1)
-        ])
-    else:
-        formatted_contract = contract_text
+    # 3. Prompt builder — factored out so retries can rebuild with fewer clauses / compact statutes
+    def _build_prompt(clause_list: List[Dict[str, Any]], compact: bool = False) -> str:
+        if clause_list:
+            formatted_contract = "\n\n".join([
+                f"### CLAUSE {c.get('source_clause_number', idx)}: {c.get('clause_title', f'Clause {idx}')}\n"
+                f"{c.get('clause_text', '')}"
+                for idx, c in enumerate(clause_list, start=1)
+            ])
+        else:
+            formatted_contract = contract_text
 
-    prompt = (
-        f"{SYSTEM_CONTRACT_RISK_PROMPT}\n\n"
-        f"AUDIT PERSPECTIVE: PROTECTING THE {audited_for}\n"
-        f"CONTRACT DOMAIN: {domain_name}\n\n"
-        f"RELEVANT BANGLADESH CODIFIED STATUTORY CONTEXT:\n{laws_context}\n\n"
-        f"{playbook_context}"
-        f"CONTRACT TEXT FOR AUDIT:\n---\n{formatted_contract}\n---\n"
-    )
+        output_budget = ""
+        if compact:
+            output_budget = (
+                "OUTPUT BUDGET (CRITICAL — YOUR RESPONSE WILL BE CUT OFF IF EXCEEDED):\n"
+                "- Include ONLY clauses with genuine HIGH or MODERATE issues (maximum 6 objects).\n"
+                "- Do NOT include COMPLIANT or LOW clauses — they are handled automatically.\n"
+                "- Keep each 'explanation' under 40 words and 'recommendation' under 25 words.\n"
+                "- No markdown, no code fences, JSON object only.\n"
+            )
 
-    try:
-        llm = get_llm()
-        response = await asyncio.to_thread(llm.invoke, prompt)
+        return (
+            f"{SYSTEM_CONTRACT_RISK_PROMPT}\n\n"
+            f"AUDIT PERSPECTIVE: PROTECTING THE {audited_for}\n"
+            f"CONTRACT DOMAIN: {domain_name}\n\n"
+            f"RELEVANT BANGLADESH CODIFIED STATUTORY CONTEXT:\n"
+            f"{laws_context_compact if compact else laws_context}\n\n"
+            f"{playbook_context}"
+            f"{output_budget}"
+            f"CONTRACT TEXT FOR AUDIT:\n---\n{formatted_contract}\n---\n"
+        )
 
+    def _extract_content(response: Any) -> str:
         content = response.content if hasattr(response, "content") else str(response)
         if isinstance(content, list):
-            content = "".join(
+            return "".join(
                 item.get("text", "") if isinstance(item, dict) else str(item)
                 for item in content
             ).strip()
-        else:
-            content = str(content).strip()
+        return str(content).strip()
 
-        content = re.sub(r"^```(?:json)?\s*", "", content, flags=re.MULTILINE)
-        content = re.sub(r"\s*```$", "", content, flags=re.MULTILINE).strip()
-        start, end = content.find("{"), content.rfind("}")
+    def _parse_analysis(content: str) -> Optional[Dict[str, Any]]:
+        text = re.sub(r"^```(?:json)?\s*", "", content, flags=re.MULTILINE)
+        text = re.sub(r"\s*```$", "", text, flags=re.MULTILINE).strip()
+        start, end = text.find("{"), text.rfind("}")
         if start != -1 and end > start:
-            content = content[start:end + 1]
+            text = text[start:end + 1]
+        try:
+            parsed = json.loads(text)
+            return parsed if isinstance(parsed, dict) else None
+        except Exception:
+            return None
 
-        analysis = json.loads(content)
+    analysis: Optional[Dict[str, Any]] = None
+    finish_reason: Optional[str] = None
+    llm_failed = False
+    try:
+        llm = get_llm()
+        # Retry ladder: full audit → reduced batch → compact prompt.
+        # Every attempt is individually guarded so one provider error never skips
+        # the remaining ladder rungs (the compact rung is sized to fit small
+        # free-tier fallback models' INPUT limits, e.g. Groq ITPM 7000).
+        attempt_prompts = [_build_prompt(structured_clauses)]
+        if len(structured_clauses) > 8:
+            attempt_prompts.append(_build_prompt(structured_clauses[:8]))
+        attempt_prompts.append(_build_prompt(structured_clauses[:5], compact=True))
+
+        for attempt_idx, attempt_prompt in enumerate(attempt_prompts, start=1):
+            try:
+                response = await asyncio.to_thread(llm.invoke, attempt_prompt)
+                finish_reason = _extract_finish_reason(response)
+                analysis = _parse_analysis(_extract_content(response))
+                if analysis is not None:
+                    break
+                logger.warning(
+                    f"[analyze_risk_node] JSON parse failed on attempt {attempt_idx} "
+                    f"(finish_reason={finish_reason})."
+                )
+            except Exception as attempt_exc:
+                logger.warning(f"[analyze_risk_node] Attempt {attempt_idx} failed: {attempt_exc}")
+            await asyncio.sleep(3)
 
     except Exception as e:
         logger.error(f"[analyze_risk_node] LLM Analysis failed: {e}")
+        analysis = None
+        llm_failed = True
+
+    if analysis is None:
+        if finish_reason and "MAX_TOKENS" in finish_reason:
+            logger.error("[analyze_risk_node] Response truncated at output-token cap even after retry.")
         analysis = {
             "overall_risk_score": "MODERATE",
             "detected_risks": [],
+            "llm_failed": True,
         }
+    elif llm_failed:
+        analysis["llm_failed"] = True
 
     return {"analysis": analysis}
 

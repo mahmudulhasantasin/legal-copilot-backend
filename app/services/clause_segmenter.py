@@ -381,6 +381,15 @@ _NUMBERED_HEADER_RE = re.compile(
     r"^\s*([0-9০-৯]{1,3}|[IVXLCDM]+)\s*[\.\)\।]\s+(.+)$"
 )
 
+# Matches Word auto-numbered headings that duplicate the section number as a prefix,
+# e.g. "1.1 1. PARTIES TO THE AGREEMENT", "1.13 13. SIGNATURES".
+# Groups 1-2 = auto-number prefix ("1.1"), group 3 = the real section number,
+# group 4 = heading title. Body lines like "2.1 The Service Provider shall ..." never
+# match because the second token must be a bare number and it must equal the prefix tail.
+_AUTONUM_HEADER_RE = re.compile(
+    r"^\s*([0-9০-৯]{1,3})\s*[\.\)]\s*([0-9০-৯]{1,3})\s+([0-9০-৯]{1,3})\s*[\.\)\।\-]?\s+(.+)$"
+)
+
 
 def _split_inline_title_and_body(rest: str) -> Tuple[str, str]:
     """Splits 'TITLE: body...' or 'Title. Long body...' into (title, full_rest)."""
@@ -431,7 +440,8 @@ def extract_clauses_from_text(raw_text: str) -> List[Dict[str, Any]]:
             continue
 
         header_match = _EXPLICIT_HEADER_RE.match(stripped)
-        num_match = None if header_match else _NUMBERED_HEADER_RE.match(stripped)
+        autonum_match = None if header_match else _AUTONUM_HEADER_RE.match(stripped)
+        num_match = None if (header_match or autonum_match) else _NUMBERED_HEADER_RE.match(stripped)
 
         # Avoid treating sub-clauses like "1.1 ..." inside an existing clause unless no explicit headers exist,
         # and avoid matching dates/years like "2026." as a clause number.
@@ -445,6 +455,21 @@ def extract_clauses_from_text(raw_text: str) -> List[Dict[str, Any]]:
             # Top-level clause if no dot, or if top-level hasn't started yet
             if "." not in _normalize_digits(num_token) or current_number is None:
                 is_new_clause = True
+        elif autonum_match:
+            # Word auto-numbered heading, e.g. "1.1 1. PARTIES TO THE AGREEMENT".
+            # Only accept when the real section number equals the auto-number prefix tail
+            # (prevents false positives on body lines like "3.2 30% upon completion").
+            prefix_num = autonum_match.group(1).strip()
+            prefix_tail = autonum_match.group(2).strip()
+            real_num = autonum_match.group(3).strip()
+            rest_candidate = autonum_match.group(4).strip()
+            if (
+                _normalize_digits(prefix_tail) == _normalize_digits(real_num)
+                and len(rest_candidate) >= 2
+            ):
+                is_new_clause = True
+                num_token = real_num
+                rest_text = rest_candidate
         elif num_match:
             candidate_num = num_match.group(1).strip()
             norm_num = _normalize_digits(candidate_num)
@@ -645,25 +670,65 @@ def classify_contract_domain(text: str) -> Dict[str, Any]:
     party_a = "Client / First Party"
     party_b = "Service Provider / Second Party"
 
-    p_a_match = re.search(
-        r"(?:^|[\n\r,;।])\s*(?:Party\s*A|First\s*Party|Client|Employer|Landlord|Disclosing\s*Party|Seller|Lender|"
-        r"প্রথম\s*পক্ষ|১ম\s*পক্ষ|মালিক|নিয়োগকর্তা|বিক্রেতা|ঋণদাতা)"
-        r"\s*[\:\—\-]\s*([^\n\r,;।]+)",
-        text or "",
-        re.IGNORECASE,
-    )
-    if p_a_match:
-        party_a = p_a_match.group(1).strip()
+    def _extract_party(label_pattern: str, fallback: str) -> str:
+        """
+        Resolves a party label to its legal entity name. The label line often
+        carries only the role ("Party A – Client"); the registered company name
+        sits on a nearby following line ("Company Name: Nexora ... Ltd.").
+        """
+        m = re.search(label_pattern, text or "", re.IGNORECASE)
+        if not m:
+            return fallback
 
-    p_b_match = re.search(
-        r"(?:^|[\n\r,;।])\s*(?:Party\s*B|Second\s*Party|Service\s*Provider|Vendor|Employee|Tenant|Receiving\s*Party|Buyer|Borrower|"
-        r"দ্বিতীয়\s*পক্ষ|২য়\s*পক্ষ|ভাড়াটিয়া|কর্মচারী|(?<!বি)ক্রেতা|ঠিকাদার|ঋণগ্রহীতা)"
-        r"\s*[\:\—\-]\s*([^\n\r,;।]+)",
-        text or "",
-        re.IGNORECASE,
+        # 1. Inline value after the label ("Party A: Nexora Digital Solutions Ltd.")
+        inline = (m.group(1) or "").strip() if m.lastindex else ""
+
+        # 2. Look ahead a few lines for the registered entity name
+        lookahead = (text or "")[m.end(): m.end() + 400]
+        company_m = re.search(
+            r"(?:Company\s*Name|Company|Organization|Organisation|Entity)\s*[:\-]\s*([^\n\r,;।]+)",
+            lookahead,
+            re.IGNORECASE,
+        )
+        if company_m:
+            name = company_m.group(1).strip().rstrip(".")
+            # A real entity name, not just the role repeated
+            if len(name) >= 3 and name.lower() not in (
+                "client", "vendor", "service provider", "employer", "employee",
+                "buyer", "seller", "landlord", "tenant", "lender", "borrower",
+            ):
+                return name
+
+        suffix_m = re.search(
+            r"([^\n\r,;।]{3,90}?\s(?:ltd|limited|llc|inc|plc|pvt|corporation|company)\b\.?)",
+            lookahead,
+            re.IGNORECASE,
+        )
+        if suffix_m:
+            return suffix_m.group(1).strip().rstrip(".")
+
+        # 3. Fall back to the inline capture, ignoring pure role words
+        if inline and inline.lower() not in (
+            "client", "vendor", "service provider", "employer", "employee",
+            "buyer", "seller", "landlord", "tenant", "lender", "borrower",
+            "first party", "second party", "party a", "party b",
+        ):
+            return inline.rstrip(".")
+        return fallback
+
+    party_a = _extract_party(
+        r"(?:^|[\n\r,;।])\s*(?:Party\s*A|First\s*Party|Client|Employer|Landlord|Disclosing\s*Party|Seller|Lender|"
+        r"প্রথম\s*পক্ষ|১ম\s*পক্ষ|মালিক|নিয়োগকর্তা|বিক্রেতা|ঋণদাতা)"
+        r"\s*[\:\—\-]?\s*([^\n\r,;।]*)",
+        party_a,
     )
-    if p_b_match:
-        party_b = p_b_match.group(1).strip()
+
+    party_b = _extract_party(
+        r"(?:^|[\n\r,;।])\s*(?:Party\s*B|Second\s*Party|Service\s*Provider|Vendor|Employee|Tenant|Receiving\s*Party|Buyer|Borrower|"
+        r"দ্বিতীয়\s*পক্ষ|২য়\s*পক্ষ|ভাড়াটিয়া|কর্মচারী|(?<!বি)ক্রেতা|ঠিকাদার|ঋণগ্রহীতা)"
+        r"\s*[\:\—\-]?\s*([^\n\r,;।]*)",
+        party_b,
+    )
 
     return {
         "domain": best_domain,

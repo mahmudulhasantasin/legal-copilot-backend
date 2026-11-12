@@ -236,6 +236,10 @@ async def upload_and_audit(
             risk_label = "HIGH"
         elif severity in ("MODERATE", "MEDIUM"):
             risk_label = "MODERATE"
+        elif severity == "NOT_ANALYZED":
+            # LLM outage row — must not look like a passing/compliant clause
+            risk_label = "MODERATE"
+            is_comp = False
         else:
             risk_label = "LOW"
 
