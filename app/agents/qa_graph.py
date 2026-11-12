@@ -399,6 +399,16 @@ async def generate_answer_node(state: QAState) -> dict:
         f"Instructions: Provide an adaptive, well-structured, dynamic, and accurate response based strictly on the verified context above. Return strictly a JSON object matching the required schema."
     )
 
+    # Retry budget: appended as a follow-up message when the first response's JSON is
+    # cut off (fallback models like Groq free tier cap output at ~950 tokens — a full
+    # chat schema rarely fits). The retry keeps quality on the primary model untouched.
+    output_budget_retry = (
+        "OUTPUT BUDGET (CRITICAL — your previous response was cut off before finishing the JSON):\n"
+        "- Keep 'detailed_answer' under 350 words total.\n"
+        "- Maximum 3 'cited_sections', 2 'cited_cases', 2 'suggested_next_steps', 2 'suggested_follow_ups'.\n"
+        "- Close the JSON object completely. No markdown fences."
+    )
+
     try:
         llm = get_llm()
         messages = [SystemMessage(content=SYSTEM_QA_PROMPT)]
@@ -409,12 +419,22 @@ async def generate_answer_node(state: QAState) -> dict:
 
         response = await llm.ainvoke(messages)
         raw_answer = _content_text(getattr(response, "content", response))
-        
+
         # Clean markdown wrappers
         raw_answer = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_answer.strip(), flags=re.I)
         
         parsed_json = _json_object(raw_answer)
-        
+
+        if not (parsed_json and "detailed_answer" in parsed_json):
+            # Output was cut off (e.g. fallback model hit its max_tokens cap):
+            # one retry with an explicit output budget before the regex salvage
+            logger.warning("[generate_answer_node] JSON incomplete. Retrying with output budget...")
+            messages.append(HumanMessage(content=output_budget_retry))
+            response = await llm.ainvoke(messages)
+            raw_answer = _content_text(getattr(response, "content", response))
+            raw_answer = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_answer.strip(), flags=re.I)
+            parsed_json = _json_object(raw_answer)
+
         if parsed_json and "detailed_answer" in parsed_json:
             final_text = parsed_json.get("detailed_answer", "")
             parsed_json.setdefault("suggested_follow_ups", [])
