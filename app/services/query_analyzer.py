@@ -72,6 +72,10 @@ CRITICAL RULES FOR ACT EXTRACTION:
 5. If the user specifies a section or article number (e.g., "২৭ নং অনুচ্ছেদ", "Section 138"), add it to `explicit_sections`.
 6. Only add `inferred_sections` when you are highly confident (e.g., "চেক ডিজঅনার" -> infer "138", "সমতার অধিকার" -> infer "27", "28").
 7. In `optimized_query`, write a rich semantic search string containing both English and Bengali legal terms to maximize vector search recall. Include the exact words the user used.
+8. CRIMINAL DEFENSE & ACCUSED DUE PROCESS SCENARIOS: If the user states they committed a crime, killed someone, caused death/injury, or asks what to do now after an incident (e.g., "আমি একজনকে মেরে ফেলেছি", "ami ekjon ke mere feleci", "ami ekon ki korbo?"):
+   - Add ["Penal Code", "Code of Criminal Procedure", "Constitution"] to `detected_acts`.
+   - Infer relevant sections such as ["302", "300", "201", "33"] to `inferred_sections`.
+   - In `optimized_query`, expand with terms like "surrender magistrate police arrest legal defense Article 33 Penal Code 302 201 CrPC 340".
 
 Respond ONLY with a strict JSON object:
 {
@@ -97,7 +101,7 @@ def _fallback(user_query: str, explicit: List[str]) -> AnalyzedQuery:
         detected_acts.append("Contract Act")
     if any(k in q_lower for k in ("labour", "labor", "শ্রম", "chakri", "চাকরি", "বেতন", "শ্রমিক", "ছাঁটাই")):
         detected_acts.append("Labour Act")
-    if any(k in q_lower for k in ("penal", "crime", "শাস্তি", "খুন", "চুরি", "প্রতারণা", "হুমকি", "মারামারি")):
+    if any(k in q_lower for k in ("penal", "crime", "শাস্তি", "খুন", "চুরি", "প্রতারণা", "হুমকি", "মারামারি", "mere", "fel", "হত্যা", "হত্যাকাণ্ড")):
         detected_acts.append("Penal Code")
     if any(k in q_lower for k in ("bail", "arrest", "জামিন", "গ্রেপ্তার", "মামলা", "থানা", "জিডি", "এজাহার")):
         detected_acts.append("Code of Criminal Procedure")

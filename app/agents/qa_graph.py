@@ -38,11 +38,17 @@ Classify the CURRENT request as exactly one of:
 CRITICAL RULES FOR CLASSIFICATION:
 - If the user is answering a previous clarifying question (e.g., "part time", "na", "no notice", "2 years"), you MUST classify as "ANSWERABLE".
 - If the user provides a detailed scenario, even if they are missing some facts, you MUST classify as "ANSWERABLE".
+- CRIMINAL OFFENSE & DUE PROCESS / ACCUSED GUIDANCE (CRITICAL):
+  If the user states or implies they committed an offense, killed someone, caused harm, were involved in an accident, or asks "what should I do now?" after an incident (e.g., "আমি একজনকে মেরে ফেলেছি", "ami ekjon ke mere feleci", "ami ekon ki korbo?", "আমার দ্বারা দুর্ঘটনা ঘটেছে"):
+  DO NOT mark as "OUT_OF_SCOPE" and NEVER refuse assistance. Under Bangladesh law (Constitution Article 33, CrPC), every accused individual has a constitutional right to legal defense and lawful due process.
+  You MUST classify these queries as "ANSWERABLE" so our system can provide lawful procedural guidance (immediate surrender before court/police, right to retain an advocate, warning against evidence tampering).
 
 EXAMPLES:
 - Query: "আমাকে চাকরি থেকে বাদ দিয়েছে।" -> "NEEDS_CLARIFICATION" (Too vague, missing facts)
 - Query: "আমার কোম্পানি আমাকে ৩ মাসের নোটিশ না দিয়েই বের করে দিয়েছে।" -> "ANSWERABLE" (Has specific facts, direct answer possible)
 - Query: "What is Section 138?" -> "ANSWERABLE" (Statutory lookup)
+- Query: "আমি একজনকে মেরে ফেলেছি / ami ekjon ke mere feleci" -> "ANSWERABLE" (Criminal incident requiring legal due process & surrender guidance)
+- Query: "ami ekon ki korbo?" (following an incident) -> "ANSWERABLE"
 
 ALSO, determine if this query requires searching for live case law/precedents (e.g., asks for recent verdicts, supreme court rulings).
 Return ONLY JSON: {
@@ -95,7 +101,7 @@ def _fallback_route(query, contract_context):
     if any(term in q for term in off_topic):
         return "OUT_OF_SCOPE", False, "আমি বাংলাদেশি আইন, আইনি প্রক্রিয়া ও চুক্তি-সংক্রান্ত প্রশ্নে সহায়তা করি।"
     
-    if any(k in q for k in ["section", "article", "ধারা", "অনুচ্ছেদ"]):
+    if any(k in q for k in ["section", "article", "ধারা", "অনুচ্ছেদ", "mere", "fel", "khun", "খুন", "হত্যা", "মেরে"]):
         return "ANSWERABLE", True, ""
 
     if len(q.split()) <= 2:
