@@ -41,6 +41,7 @@ tavily-python>=0.5.0
 
 # Document Ingestion & Background Scheduler
 pypdf>=4.3.0
+pypdfium2>=4.30.0
 python-docx>=1.1.0
 apscheduler>=3.10.0
 python-dotenv>=1.0.1

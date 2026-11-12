@@ -1,0 +1,77 @@
+{
+  "version": "1.0.0",
+  "description": "Model profiles for model-agnostic Legal Copilot & Contract Audit benchmarking.",
+  "profiles": {
+    "default_production": {
+      "provider": "app_default",
+      "display_name": "Production Default (Gemini 3.5 Flash Lite -> Groq Qwen3.8 Fallback)",
+      "description": "Uses app.services.llm_provider._build_default_llm() exactly as deployed.",
+      "temperature": 0.1,
+      "max_tokens": 3000,
+      "timeout_sec": 60.0
+    },
+    "gemini_flash_lite": {
+      "provider": "google_genai",
+      "model": "gemini-3.5-flash-lite",
+      "api_key_env": "GEMINI_API_KEY",
+      "display_name": "Google Gemini 3.5 Flash Lite",
+      "temperature": 0.1,
+      "max_tokens": 3000,
+      "timeout_sec": 60.0
+    },
+    "groq_qwen3_8": {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "api_key_env": "GROQ_API_KEY",
+      "display_name": "Groq Qwen 3.8 27B",
+      "temperature": 0.1,
+      "max_tokens": 950,
+      "timeout_sec": 45.0
+    },
+    "colab_gemma4_e4b": {
+      "provider": "openai_compatible",
+      "model_env": "COLAB_LLM_MODEL",
+      "default_model": "gemma4:e4b",
+      "base_url_env": "COLAB_LLM_BASE_URL",
+      "api_key_env": "COLAB_LLM_API_KEY",
+      "default_api_key": "colab-local",
+      "display_name": "Colab Local (gemma4:e4b)",
+      "temperature": 0.1,
+      "max_tokens": 1200,
+      "timeout_sec": 120.0
+    },
+    "colab_qwen3_8b": {
+      "provider": "openai_compatible",
+      "model": "qwen3:8b",
+      "base_url_env": "COLAB_LLM_BASE_URL",
+      "api_key_env": "COLAB_LLM_API_KEY",
+      "default_api_key": "colab-local",
+      "display_name": "Colab Local (qwen3:8b)",
+      "temperature": 0.1,
+      "max_tokens": 1200,
+      "timeout_sec": 120.0
+    },
+    "colab_llama3_1_8b": {
+      "provider": "openai_compatible",
+      "model": "llama3.1:8b",
+      "base_url_env": "COLAB_LLM_BASE_URL",
+      "api_key_env": "COLAB_LLM_API_KEY",
+      "default_api_key": "colab-local",
+      "display_name": "Colab Local (llama3.1:8b)",
+      "temperature": 0.1,
+      "max_tokens": 1200,
+      "timeout_sec": 120.0
+    },
+    "openrouter_custom": {
+      "provider": "openai_compatible",
+      "model_env": "OPENROUTER_MODEL",
+      "default_model": "google/gemma-4-26b-a4b-it:free",
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "display_name": "OpenRouter Custom Model",
+      "temperature": 0.1,
+      "max_tokens": 3000,
+      "timeout_sec": 90.0
+    }
+  }
+}

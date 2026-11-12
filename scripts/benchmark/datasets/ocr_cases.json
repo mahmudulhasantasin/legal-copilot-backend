@@ -1,0 +1,150 @@
+{
+  "dataset_name": "advotech_ocr_ingestion_gold_v1",
+  "version": "1.0.0",
+  "description": "13 gold document ingestion & OCR test cases covering digital PDFs, DOCX, scanned English contracts, scanned Bangla legal documents, and the 3 attached real PDFs (LSA-2026-002, SDA-2026-011 & Nexora_Playbook.pdf). Place corresponding sample files under scripts/benchmark/datasets/fixtures/ before running pdf_evaluator.",
+  "cases": [
+    {
+      "id": "OCR-PDF-001",
+      "doc_type": "digital_pdf",
+      "language": "en",
+      "fixture_path": "fixtures/digital_saas_agreement_en.pdf",
+      "ground_truth_text": "MASTER SAAS AGREEMENT\nCLAUSE 1: PAYMENT TERMS\nClient shall pay BDT 5,00,000 within 30 days of invoice.\nCLAUSE 2: GOVERNING LAW\nThis Agreement is governed by the laws of Bangladesh and Arbitration Act, 2001.",
+      "required_entities": ["BDT 5,00,000", "30 days", "Arbitration Act, 2001"],
+      "expected_min_clauses": 2,
+      "max_cer_threshold": 0.02,
+      "notes": "Clean native digital PDF extraction via pypdf."
+    },
+    {
+      "id": "OCR-PDF-002",
+      "doc_type": "digital_pdf",
+      "language": "bn",
+      "fixture_path": "fixtures/digital_legal_notice_bn.pdf",
+      "ground_truth_text": "আইনি নোটিশ\nপ্রতি: জনাব করিম আহমেদ, গুলশান-২, ঢাকা।\nবিষয়: দি নেগোশিয়েবল ইনস্ট্রুমেন্টস অ্যাক্ট, ১৮৮১-এর ধারা ১৩৮ অনুযায়ী ১০,০০,০০০ টাকার চেক ডিজঅনার সংক্রান্ত নোটিশ। ৩০ দিনের মধ্যে টাকা পরিশোধ না করলে মামলা দায়ের করা হবে।",
+      "required_entities": ["১৩৮", "১০,০০,০০০", "৩০ দিন"],
+      "expected_min_clauses": 1,
+      "max_cer_threshold": 0.05,
+      "notes": "Digital Bengali Unicode PDF extraction (checks font/encoding preservation)."
+    },
+    {
+      "id": "OCR-DOCX-003",
+      "doc_type": "docx",
+      "language": "en",
+      "fixture_path": "fixtures/employment_contract_en.docx",
+      "ground_truth_text": "EMPLOYMENT CONTRACT\nCLAUSE 1: NOTICE PERIOD\nPermanent employees are entitled to 120 days written notice under Section 26 of the Bangladesh Labour Act, 2006.\nCLAUSE 2: CONFIDENTIALITY\nEmployee shall protect proprietary trade secrets.",
+      "required_entities": ["120 days", "Section 26", "Bangladesh Labour Act, 2006"],
+      "expected_min_clauses": 2,
+      "max_cer_threshold": 0.01,
+      "notes": "DOCX parser validation."
+    },
+    {
+      "id": "OCR-SCAN-004",
+      "doc_type": "scanned_pdf",
+      "language": "en",
+      "fixture_path": "fixtures/scanned_lease_agreement_en.pdf",
+      "ground_truth_text": "COMMERCIAL LEASE AGREEMENT\nExecuted on Non-Judicial Stamp Paper of BDT 300.\nCLAUSE 1: RENT AND DEPOSIT\nMonthly rent is BDT 1,50,000. Tenant deposits BDT 6,00,000 refundable security deposit.\nCLAUSE 2: TERM\nLease term is 3 years subject to registration under Section 17 of the Registration Act, 1908.",
+      "required_entities": ["BDT 300", "BDT 1,50,000", "BDT 6,00,000", "Section 17", "Registration Act, 1908"],
+      "expected_min_clauses": 2,
+      "max_cer_threshold": 0.08,
+      "notes": "Multi-page scanned English PDF triggering OCR fallback."
+    },
+    {
+      "id": "OCR-SCAN-005",
+      "doc_type": "scanned_image",
+      "language": "en",
+      "fixture_path": "fixtures/mobile_photo_nda_en.jpg",
+      "ground_truth_text": "MUTUAL NON-DISCLOSURE AGREEMENT\nCLAUSE 1: DEFINITION\nConfidential Information includes source code, client lists, and pricing.\nCLAUSE 2: TERM\nObligations remain valid for 3 years.",
+      "required_entities": ["Confidential Information", "3 years"],
+      "expected_min_clauses": 2,
+      "max_cer_threshold": 0.12,
+      "notes": "Mobile camera photo of printed English NDA (lighting/perspective noise)."
+    },
+    {
+      "id": "OCR-SCAN-006",
+      "doc_type": "scanned_pdf",
+      "language": "bn",
+      "fixture_path": "fixtures/scanned_deed_sale_bn.pdf",
+      "ground_truth_text": "সাফ কবলা দলিল\nমৌজা: ধানমন্ডি, জেলা: ঢাকা। জমির পরিমাণ: ৫ কাঠা। বিক্রয় মূল্য: ২,৫০,০০,০০০ টাকা। রেজিস্ট্রেশন আইন, ১৯০৮ অনুযায়ী দলিল সম্পাদিত।",
+      "required_entities": ["ধানমন্ডি", "৫ কাঠা", "২,৫০,০০,০০০", "১৯০৮"],
+      "expected_min_clauses": 1,
+      "max_cer_threshold": 0.12,
+      "notes": "Scanned Bengali property deed (tests Bengali OCR + Bengali digits)."
+    },
+    {
+      "id": "OCR-SCAN-007",
+      "doc_type": "scanned_image",
+      "language": "bn",
+      "fixture_path": "fixtures/scanned_court_summons_bn.png",
+      "ground_truth_text": "বিজ্ঞ মেট্রোপলিটন ম্যাজিস্ট্রেট আদালত, ঢাকা\nসি.আর. মামলা নং: ৪৫২/২০২৬\nধারা: দি নেগোশিয়েবল ইনস্ট্রুমেন্টস অ্যাক্ট, ১৮৮১-এর ১৩৮ ধারা।\nহাজিরার তারিখ: ২৫/১১/২০২৬ ইং।",
+      "required_entities": ["৪৫২/২০২৬", "১৩৮", "২৫/১১/২০২৬"],
+      "expected_min_clauses": 1,
+      "max_cer_threshold": 0.12,
+      "notes": "Scanned Bengali court summons image."
+    },
+    {
+      "id": "OCR-SCAN-008",
+      "doc_type": "scanned_pdf",
+      "language": "en",
+      "fixture_path": "fixtures/scanned_table_schedule_en.pdf",
+      "ground_truth_text": "SCHEDULE B: MILESTONE PAYMENT TABLE\nMilestone 1: Architecture Sign-off | 20% | BDT 4,00,000\nMilestone 2: Beta Delivery | 40% | BDT 8,00,000\nMilestone 3: Production Go-Live | 40% | BDT 8,00,000",
+      "required_entities": ["BDT 4,00,000", "BDT 8,00,000", "20%", "40%"],
+      "expected_min_clauses": 1,
+      "max_cer_threshold": 0.1,
+      "notes": "Tests table/numeric preservation in scanned payment schedules."
+    },
+    {
+      "id": "OCR-SCAN-009",
+      "doc_type": "scanned_pdf",
+      "language": "bn_en_mixed",
+      "fixture_path": "fixtures/scanned_bilingual_agreement.pdf",
+      "ground_truth_text": "চুক্তিপত্র (BILINGUAL SERVICE AGREEMENT)\nপ্রথম পক্ষ: ABC Tech Ltd.\nদ্বিতীয় পক্ষ: মোঃ রফিকুল ইসলাম।\nমাসিক সার্ভিস ফি: 75,000 টাকা (BDT Seventy-Five Thousand)। নোটিশ পিরিয়ড: ৬০ দিন।",
+      "required_entities": ["ABC Tech Ltd.", "75,000", "৬০ দিন"],
+      "expected_min_clauses": 1,
+      "max_cer_threshold": 0.12,
+      "notes": "Bilingual Bangla + English mixed document OCR test."
+    },
+    {
+      "id": "OCR-SCAN-010",
+      "doc_type": "scanned_pdf_long",
+      "language": "en",
+      "fixture_path": "fixtures/scanned_long_msa_10pages_en.pdf",
+      "ground_truth_text": "MASTER SERVICES AGREEMENT\nCLAUSE 1: DEFINITIONS\nCLAUSE 7: LIMITATION OF LIABILITY AND NON-COMPETE\nVendor shall not compete for 5 years and late penalty is 5% per month.",
+      "required_entities": ["5 years", "5% per month"],
+      "expected_min_clauses": 5,
+      "max_cer_threshold": 0.1,
+      "notes": "Long multi-page scanned PDF testing OCR latency & clause segmentation retention."
+    },
+    {
+      "id": "OCR-PDF-011",
+      "doc_type": "garbled_font_bengali_pdf",
+      "language": "bn",
+      "fixture_path": "fixtures/LSA-2026-002.pdf",
+      "ground_truth_text": "জমি ক্রয়-বিক্রয় চুক্তিপত্র\n(AGREEMENT FOR SALE OF IMMOVABLE PROPERTY)\nদলিল রেফারেন্স: LSA-2026-002\n১. চুক্তির পক্ষসমূহ\nপ্রথম পক্ষ – বিক্রেতা: মোঃ আব্দুল করিম\nদ্বিতীয় পক্ষ – ক্রেতা: মোঃ সাইফুল ইসলাম\n৪. বিক্রয়মূল্য ও অর্থ পরিশোধ\nউক্ত ১০ শতাংশ জমির মোট বিক্রয়মূল্য নির্ধারণ করা হলো ২৫,০০,০০০ (পঁচিশ লক্ষ) টাকা।\n৯. দলিল রেজিস্ট্রেশন\nউভয় পক্ষ আগামী ৩০ দিনের মধ্যে সাফ কবলা দলিল রেজিস্ট্রেশন সম্পন্ন করবেন।",
+      "required_entities": ["LSA-2026-002", "মোঃ আব্দুল করিম", "মোঃ সাইফুল ইসলাম", "২৫,০০,০০০", "৩০ দিনের মধ্যে", "১২৫৬/১৯৯৮"],
+      "expected_min_clauses": 10,
+      "max_cer_threshold": 0.10,
+      "notes": "CRITICAL REAL TEST: Embedded PDF text layer of LSA-2026-002 is garbled legacy font ('জ7মি ক্রয়-7বিক্রয় চুǬক্তিপত্র'), so pypdf alone fails unless OCR/Vision is triggered!"
+    },
+    {
+      "id": "OCR-PDF-012",
+      "doc_type": "digital_pdf",
+      "language": "en",
+      "fixture_path": "fixtures/SDA-2026-011.pdf",
+      "ground_truth_text": "SOFTWARE DEVELOPMENT & TECHNOLOGY SERVICE AGREEMENT\nAgreement Reference: SDA-2026-011\n1. PARTIES TO THE AGREEMENT\nParty A – Client\nCompany Name: Nexora Digital Solutions Ltd.\nParty B – Service Provider\nCompany Name: ByteCraft Technologies Ltd.\n3. CONTRACT VALUE AND PAYMENT TERMS\nThe total contract value shall be BDT 12,00,000 (Twelve Lakh Bangladeshi Taka).\nIn case of delayed payment, the Client shall pay a late payment charge of 5% per day on the outstanding amount.\n9. LIMITATION OF LIABILITY\nThe Service Provider's total liability under this Agreement shall not exceed BDT 50,000 under any circumstances.",
+      "required_entities": ["SDA-2026-011", "Nexora Digital Solutions Ltd.", "ByteCraft Technologies Ltd.", "BDT 12,00,000", "5% per day", "BDT 50,000"],
+      "expected_min_clauses": 15,
+      "max_cer_threshold": 0.03,
+      "notes": "Real 5-page English Software Development Agreement PDF (17 clauses) testing PDF extraction + full 17-clause AST retention."
+    },
+    {
+      "id": "OCR-PDF-013",
+      "doc_type": "digital_pdf",
+      "language": "en",
+      "fixture_path": "fixtures/Nexora_Playbook.pdf",
+      "ground_truth_text": "NEXORA GROUP\nCORPORATE CONTRACT GOVERNANCE PLAYBOOK\nDocument ID: NEX-CP-001\nRule CP-003 — Payment Terms\nThe company's preferred payment structure is:\n30% advance.\n40% upon milestone completion.\n30% after final acceptance.\nRule CP-006\nThe company's preferred aggregate liability cap is the total contract value.\nRule CP-007\nThe preferred confidentiality period is three years after termination, subject to longer protection where appropriate.\nRule CP-009\nThe preferred software defect correction period is 60 days after final acceptance.\n16. Dual-Source Legal Audit Requirement\nSource A — Company Playbook\nSource B — Bangladesh Law Database (BDLaw)",
+      "required_entities": ["NEX-CP-001", "CP-003", "30% advance", "CP-006", "total contract value", "CP-007", "CP-009", "60 days", "BDLaw"],
+      "expected_min_clauses": 10,
+      "max_cer_threshold": 0.03,
+      "notes": "Real 8-page Nexora Corporate Contract Governance Playbook PDF (NEX-CP-001) testing PDF extraction + playbook ingestion readiness."
+    }
+  ]
+}

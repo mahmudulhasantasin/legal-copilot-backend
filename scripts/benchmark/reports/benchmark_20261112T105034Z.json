@@ -1,0 +1,211 @@
+{
+  "generated_at": "2026-11-12T10:50:34.981324+00:00",
+  "mode": "full",
+  "dry_run": false,
+  "suites_requested": [
+    "ocr"
+  ],
+  "dataset_validation": {
+    "total_cases": 118,
+    "unique_ids": true,
+    "counts": {
+      "rag": 55,
+      "contract": 32,
+      "hallucination": 18,
+      "ocr": 13
+    }
+  },
+  "runs": [
+    {
+      "model_profile": "default_production",
+      "display_name": "Production Default (Gemini 3.5 Flash Lite -> Groq Qwen3.8 Fallback)",
+      "performance": {
+        "overall": {
+          "executed": 3,
+          "passed": 3,
+          "errors": 0,
+          "pass_rate": 1.0,
+          "p50_ms": 521,
+          "p95_ms": 9435,
+          "mean_ms": 3428,
+          "max_ms": 9435
+        },
+        "by_suite": {
+          "ocr": {
+            "executed": 3,
+            "passed": 3,
+            "errors": 0,
+            "pass_rate": 1.0,
+            "p50_ms": 521,
+            "p95_ms": 9435,
+            "mean_ms": 3428,
+            "max_ms": 9435
+          }
+        }
+      },
+      "suites": [
+        {
+          "suite": "ocr",
+          "summary": {
+            "total": 13,
+            "executed": 3,
+            "skipped_missing_fixtures": 10,
+            "passed": 3,
+            "errors": 0,
+            "avg_cer_en": 0.0,
+            "avg_cer_bn": 0.0409,
+            "entity_recall": 1.0,
+            "clause_count_pass_rate": 1.0
+          },
+          "cases": [
+            {
+              "id": "OCR-PDF-001",
+              "suite": "ocr",
+              "doc_type": "digital_pdf",
+              "language": "en",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/digital_saas_agreement_en.pdf"
+            },
+            {
+              "id": "OCR-PDF-002",
+              "suite": "ocr",
+              "doc_type": "digital_pdf",
+              "language": "bn",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/digital_legal_notice_bn.pdf"
+            },
+            {
+              "id": "OCR-DOCX-003",
+              "suite": "ocr",
+              "doc_type": "docx",
+              "language": "en",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/employment_contract_en.docx"
+            },
+            {
+              "id": "OCR-SCAN-004",
+              "suite": "ocr",
+              "doc_type": "scanned_pdf",
+              "language": "en",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/scanned_lease_agreement_en.pdf"
+            },
+            {
+              "id": "OCR-SCAN-005",
+              "suite": "ocr",
+              "doc_type": "scanned_image",
+              "language": "en",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/mobile_photo_nda_en.jpg"
+            },
+            {
+              "id": "OCR-SCAN-006",
+              "suite": "ocr",
+              "doc_type": "scanned_pdf",
+              "language": "bn",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/scanned_deed_sale_bn.pdf"
+            },
+            {
+              "id": "OCR-SCAN-007",
+              "suite": "ocr",
+              "doc_type": "scanned_image",
+              "language": "bn",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/scanned_court_summons_bn.png"
+            },
+            {
+              "id": "OCR-SCAN-008",
+              "suite": "ocr",
+              "doc_type": "scanned_pdf",
+              "language": "en",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/scanned_table_schedule_en.pdf"
+            },
+            {
+              "id": "OCR-SCAN-009",
+              "suite": "ocr",
+              "doc_type": "scanned_pdf",
+              "language": "bn_en_mixed",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/scanned_bilingual_agreement.pdf"
+            },
+            {
+              "id": "OCR-SCAN-010",
+              "suite": "ocr",
+              "doc_type": "scanned_pdf_long",
+              "language": "en",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/scanned_long_msa_10pages_en.pdf"
+            },
+            {
+              "id": "OCR-PDF-011",
+              "suite": "ocr",
+              "doc_type": "garbled_font_bengali_pdf",
+              "language": "bn",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 9435,
+              "extracted_chars": 5040,
+              "cer": 0.0409,
+              "max_cer_threshold": 0.1,
+              "entity_recall": 1.0,
+              "parsed_clauses": 17,
+              "expected_min_clauses": 10
+            },
+            {
+              "id": "OCR-PDF-012",
+              "suite": "ocr",
+              "doc_type": "digital_pdf",
+              "language": "en",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 521,
+              "extracted_chars": 9310,
+              "cer": 0.0,
+              "max_cer_threshold": 0.03,
+              "entity_recall": 1.0,
+              "parsed_clauses": 17,
+              "expected_min_clauses": 15
+            },
+            {
+              "id": "OCR-PDF-013",
+              "suite": "ocr",
+              "doc_type": "digital_pdf",
+              "language": "en",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 330,
+              "extracted_chars": 8999,
+              "cer": 0.0,
+              "max_cer_threshold": 0.03,
+              "entity_recall": 1.0,
+              "parsed_clauses": 25,
+              "expected_min_clauses": 10
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

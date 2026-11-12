@@ -46,6 +46,31 @@ DOMAIN_RETRIEVAL_QUERIES = {
         "The Contract Act 1872 Section 73 74 compensation for breach liquidated damages",
         "The Contract Act 1872 Section 56 impossibility frustration",
         "Arbitration Act 2001 dispute resolution"
+    ],
+    "PROPERTY_SALE_TRANSFER": [
+        "The Transfer of Property Act 1882 Section 54 55 sale of immovable property title",
+        "The Registration Act 1908 Section 17 49 compulsory registration sale deed",
+        "The Specific Relief Act 1877 Section 12 specific performance contract"
+    ],
+    "PARTNERSHIP_JV": [
+        "The Partnership Act 1932 Section 13 mutual rights duties profit loss",
+        "The Partnership Act 1932 dissolution of firm",
+        "Arbitration Act 2001 domestic dispute resolution Dhaka"
+    ],
+    "LOAN_FINANCING": [
+        "The Contract Act 1872 Section 74 penalty default interest",
+        "The Transfer of Property Act 1882 Section 58 mortgage security",
+        "The Negotiable Instruments Act 1881 Section 138 cheque dishonour"
+    ],
+    "CONSTRUCTION_EPC": [
+        "The Contract Act 1872 Section 73 74 liquidated damages delay penalty",
+        "The Contract Act 1872 Section 56 impossibility frustration",
+        "Arbitration Act 2001 dispute resolution"
+    ],
+    "PROCUREMENT_SUPPLY": [
+        "The Sale of Goods Act 1930 inspection delivery rejection defective goods",
+        "The Contract Act 1872 Section 65 73 74 restoration breach compensation",
+        "Arbitration Act 2001 dispute resolution"
     ]
 }
 

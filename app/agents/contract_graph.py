@@ -47,7 +47,13 @@ async def _verify_detected_statutes(detected_risks: List[Dict[str, Any]], retrie
     """
     for risk in detected_risks:
         law_str = str(risk.get("violated_law", ""))
-        if not law_str or "commercial standard" in law_str.lower() or "general contract" in law_str.lower():
+        law_lower = law_str.lower()
+        if "playbook" in law_lower or re.search(r"\brule-[a-z0-9\-]+\b", law_lower):
+            risk["is_statute_verified"] = True
+            risk["statute_verified_label"] = "Company Playbook Rule"
+            continue
+
+        if not law_str or "commercial standard" in law_lower or "general contract" in law_lower:
             risk["is_statute_verified"] = False
             risk["statute_verified_label"] = "Commercial Standard"
             continue

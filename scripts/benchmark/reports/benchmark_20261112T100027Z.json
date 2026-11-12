@@ -1,0 +1,1241 @@
+{
+  "generated_at": "2026-11-12T10:00:27.194467+00:00",
+  "mode": "full",
+  "dry_run": true,
+  "suites_requested": [
+    "rag",
+    "contract",
+    "hallucination",
+    "ocr"
+  ],
+  "dataset_validation": {
+    "total_cases": 118,
+    "unique_ids": true,
+    "counts": {
+      "rag": 55,
+      "contract": 32,
+      "hallucination": 18,
+      "ocr": 13
+    }
+  },
+  "runs": [
+    {
+      "model_profile": "default_production",
+      "display_name": "Production Default (Gemini 3.5 Flash Lite -> Groq Qwen3.8 Fallback)",
+      "performance": {
+        "overall": {
+          "executed": 108,
+          "passed": 106,
+          "errors": 0,
+          "pass_rate": 0.9815,
+          "p50_ms": 0,
+          "p95_ms": 61,
+          "mean_ms": 14,
+          "max_ms": 523
+        },
+        "by_suite": {
+          "contract": {
+            "executed": 32,
+            "passed": 32,
+            "errors": 0,
+            "pass_rate": 1.0,
+            "p50_ms": 7,
+            "p95_ms": 81,
+            "mean_ms": 16,
+            "max_ms": 113
+          },
+          "ocr": {
+            "executed": 3,
+            "passed": 1,
+            "errors": 0,
+            "pass_rate": 0.3333,
+            "p50_ms": 352,
+            "p95_ms": 523,
+            "mean_ms": 361,
+            "max_ms": 523
+          },
+          "rag": {
+            "executed": 55,
+            "passed": 55,
+            "errors": 0,
+            "pass_rate": 1.0,
+            "p50_ms": 0,
+            "p95_ms": 0,
+            "mean_ms": 0,
+            "max_ms": 0
+          },
+          "hallucination": {
+            "executed": 18,
+            "passed": 18,
+            "errors": 0,
+            "pass_rate": 1.0,
+            "p50_ms": 0,
+            "p95_ms": 0,
+            "mean_ms": 0,
+            "max_ms": 0
+          }
+        }
+      },
+      "suites": [
+        {
+          "suite": "contract",
+          "summary": {
+            "total": 32,
+            "passed": 32,
+            "errors": 0,
+            "domain_accuracy": 1.0
+          },
+          "cases": [
+            {
+              "id": "CON-EMP-001",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 28,
+              "domain_match": true,
+              "predicted_domain": "EMPLOYMENT_SERVICE",
+              "parsed_clause_count": 1,
+              "missing_provisions_recall": 0.0
+            },
+            {
+              "id": "CON-EMP-002",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 4,
+              "domain_match": true,
+              "predicted_domain": "EMPLOYMENT_SERVICE",
+              "parsed_clause_count": 1,
+              "missing_provisions_recall": 0.0
+            },
+            {
+              "id": "CON-EMP-003",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 10,
+              "domain_match": true,
+              "predicted_domain": "EMPLOYMENT_SERVICE",
+              "parsed_clause_count": 4,
+              "missing_provisions_recall": 1.0
+            },
+            {
+              "id": "CON-EMP-004",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 6,
+              "domain_match": true,
+              "predicted_domain": "EMPLOYMENT_SERVICE",
+              "parsed_clause_count": 2,
+              "missing_provisions_recall": 0.0
+            },
+            {
+              "id": "CON-EMP-005",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 9,
+              "domain_match": true,
+              "predicted_domain": "EMPLOYMENT_SERVICE",
+              "parsed_clause_count": 4,
+              "missing_provisions_recall": 1.0
+            },
+            {
+              "id": "CON-TECH-001",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 13,
+              "domain_match": true,
+              "predicted_domain": "TECH_SAAS_VENDOR",
+              "parsed_clause_count": 1,
+              "missing_provisions_recall": 0.0
+            },
+            {
+              "id": "CON-TECH-002",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 10,
+              "domain_match": true,
+              "predicted_domain": "TECH_SAAS_VENDOR",
+              "parsed_clause_count": 4,
+              "missing_provisions_recall": 0.0
+            },
+            {
+              "id": "CON-TECH-003",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 9,
+              "domain_match": true,
+              "predicted_domain": "TECH_SAAS_VENDOR",
+              "parsed_clause_count": 4,
+              "missing_provisions_recall": 1.0
+            },
+            {
+              "id": "CON-TECH-004",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 20,
+              "domain_match": true,
+              "predicted_domain": "TECH_SAAS_VENDOR",
+              "parsed_clause_count": 5,
+              "missing_provisions_recall": 1.0
+            },
+            {
+              "id": "CON-TECH-005",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 22,
+              "domain_match": true,
+              "predicted_domain": "TECH_SAAS_VENDOR",
+              "parsed_clause_count": 3,
+              "missing_provisions_recall": 0.0
+            },
+            {
+              "id": "CON-TECH-006",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 81,
+              "domain_match": true,
+              "predicted_domain": "TECH_SAAS_VENDOR",
+              "parsed_clause_count": 13,
+              "missing_provisions_recall": 1.0
+            },
+            {
+              "id": "CON-LEASE-001",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 7,
+              "domain_match": true,
+              "predicted_domain": "COMMERCIAL_LEASE",
+              "parsed_clause_count": 1,
+              "missing_provisions_recall": 0.0
+            },
+            {
+              "id": "CON-LEASE-002",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 7,
+              "domain_match": true,
+              "predicted_domain": "COMMERCIAL_LEASE",
+              "parsed_clause_count": 3,
+              "missing_provisions_recall": 1.0
+            },
+            {
+              "id": "CON-LEASE-003",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 6,
+              "domain_match": true,
+              "predicted_domain": "COMMERCIAL_LEASE",
+              "parsed_clause_count": 3,
+              "missing_provisions_recall": 1.0
+            },
+            {
+              "id": "CON-LEASE-004",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 8,
+              "domain_match": true,
+              "predicted_domain": "COMMERCIAL_LEASE",
+              "parsed_clause_count": 3,
+              "missing_provisions_recall": 1.0
+            },
+            {
+              "id": "CON-NDA-001",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 5,
+              "domain_match": true,
+              "predicted_domain": "NDA_CONFIDENTIALITY",
+              "parsed_clause_count": 1,
+              "missing_provisions_recall": 1.0
+            },
+            {
+              "id": "CON-NDA-002",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 6,
+              "domain_match": true,
+              "predicted_domain": "NDA_CONFIDENTIALITY",
+              "parsed_clause_count": 3,
+              "missing_provisions_recall": 0.0
+            },
+            {
+              "id": "CON-NDA-003",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 8,
+              "domain_match": true,
+              "predicted_domain": "NDA_CONFIDENTIALITY",
+              "parsed_clause_count": 3,
+              "missing_provisions_recall": 1.0
+            },
+            {
+              "id": "CON-GEN-001",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 7,
+              "domain_match": true,
+              "predicted_domain": "GENERAL_COMMERCIAL",
+              "parsed_clause_count": 1,
+              "missing_provisions_recall": 1.0
+            },
+            {
+              "id": "CON-GEN-002",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 6,
+              "domain_match": true,
+              "predicted_domain": "GENERAL_COMMERCIAL",
+              "parsed_clause_count": 1,
+              "missing_provisions_recall": 1.0
+            },
+            {
+              "id": "CON-GEN-003",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 8,
+              "domain_match": true,
+              "predicted_domain": "GENERAL_COMMERCIAL",
+              "parsed_clause_count": 2,
+              "missing_provisions_recall": 1.0
+            },
+            {
+              "id": "CON-EMP-006",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 21,
+              "domain_match": true,
+              "predicted_domain": "EMPLOYMENT_SERVICE",
+              "parsed_clause_count": 7,
+              "missing_provisions_recall": 1.0
+            },
+            {
+              "id": "CON-TECH-007",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 3,
+              "domain_match": true,
+              "predicted_domain": "TECH_SAAS_VENDOR",
+              "parsed_clause_count": 1,
+              "missing_provisions_recall": 0.0
+            },
+            {
+              "id": "CON-TECH-008",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 5,
+              "domain_match": true,
+              "predicted_domain": "TECH_SAAS_VENDOR",
+              "parsed_clause_count": 2,
+              "missing_provisions_recall": 0.0
+            },
+            {
+              "id": "CON-LEASE-005",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 3,
+              "domain_match": true,
+              "predicted_domain": "COMMERCIAL_LEASE",
+              "parsed_clause_count": 2,
+              "missing_provisions_recall": 0.0
+            },
+            {
+              "id": "CON-NDA-004",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 3,
+              "domain_match": true,
+              "predicted_domain": "NDA_CONFIDENTIALITY",
+              "parsed_clause_count": 1,
+              "missing_provisions_recall": 0.0
+            },
+            {
+              "id": "CON-GEN-004",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 4,
+              "domain_match": true,
+              "predicted_domain": "PROCUREMENT_SUPPLY",
+              "parsed_clause_count": 3,
+              "missing_provisions_recall": 1.0
+            },
+            {
+              "id": "CON-GEN-005",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 6,
+              "domain_match": true,
+              "predicted_domain": "GENERAL_COMMERCIAL",
+              "parsed_clause_count": 2,
+              "missing_provisions_recall": 1.0
+            },
+            {
+              "id": "CON-EMP-007",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 5,
+              "domain_match": true,
+              "predicted_domain": "EMPLOYMENT_SERVICE",
+              "parsed_clause_count": 3,
+              "missing_provisions_recall": 1.0
+            },
+            {
+              "id": "CON-TECH-009",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 8,
+              "domain_match": true,
+              "predicted_domain": "TECH_SAAS_VENDOR",
+              "parsed_clause_count": 2,
+              "missing_provisions_recall": 0.0
+            },
+            {
+              "id": "CON-PROP-001",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 61,
+              "domain_match": true,
+              "predicted_domain": "PROPERTY_SALE_TRANSFER",
+              "parsed_clause_count": 13,
+              "missing_provisions_recall": 1.0
+            },
+            {
+              "id": "CON-TECH-010",
+              "suite": "contract",
+              "mode": "dry_run",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 113,
+              "domain_match": true,
+              "predicted_domain": "TECH_SAAS_VENDOR",
+              "parsed_clause_count": 17,
+              "missing_provisions_recall": 0.0
+            }
+          ]
+        },
+        {
+          "suite": "ocr",
+          "summary": {
+            "total": 13,
+            "executed": 3,
+            "skipped_missing_fixtures": 10,
+            "passed": 1,
+            "errors": 0,
+            "avg_cer_en": 0.0347,
+            "avg_cer_bn": 0.1918,
+            "entity_recall": 0.8333,
+            "clause_count_pass_rate": 1.0
+          },
+          "cases": [
+            {
+              "id": "OCR-PDF-001",
+              "suite": "ocr",
+              "doc_type": "digital_pdf",
+              "language": "en",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/digital_saas_agreement_en.pdf"
+            },
+            {
+              "id": "OCR-PDF-002",
+              "suite": "ocr",
+              "doc_type": "digital_pdf",
+              "language": "bn",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/digital_legal_notice_bn.pdf"
+            },
+            {
+              "id": "OCR-DOCX-003",
+              "suite": "ocr",
+              "doc_type": "docx",
+              "language": "en",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/employment_contract_en.docx"
+            },
+            {
+              "id": "OCR-SCAN-004",
+              "suite": "ocr",
+              "doc_type": "scanned_pdf",
+              "language": "en",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/scanned_lease_agreement_en.pdf"
+            },
+            {
+              "id": "OCR-SCAN-005",
+              "suite": "ocr",
+              "doc_type": "scanned_image",
+              "language": "en",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/mobile_photo_nda_en.jpg"
+            },
+            {
+              "id": "OCR-SCAN-006",
+              "suite": "ocr",
+              "doc_type": "scanned_pdf",
+              "language": "bn",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/scanned_deed_sale_bn.pdf"
+            },
+            {
+              "id": "OCR-SCAN-007",
+              "suite": "ocr",
+              "doc_type": "scanned_image",
+              "language": "bn",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/scanned_court_summons_bn.png"
+            },
+            {
+              "id": "OCR-SCAN-008",
+              "suite": "ocr",
+              "doc_type": "scanned_pdf",
+              "language": "en",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/scanned_table_schedule_en.pdf"
+            },
+            {
+              "id": "OCR-SCAN-009",
+              "suite": "ocr",
+              "doc_type": "scanned_pdf",
+              "language": "bn_en_mixed",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/scanned_bilingual_agreement.pdf"
+            },
+            {
+              "id": "OCR-SCAN-010",
+              "suite": "ocr",
+              "doc_type": "scanned_pdf_long",
+              "language": "en",
+              "status": "SKIPPED_MISSING_FIXTURE",
+              "passed": null,
+              "latency_ms": 0,
+              "fixture_path": "fixtures/scanned_long_msa_10pages_en.pdf"
+            },
+            {
+              "id": "OCR-PDF-011",
+              "suite": "ocr",
+              "doc_type": "garbled_font_bengali_pdf",
+              "language": "bn",
+              "status": "FAILED",
+              "passed": false,
+              "latency_ms": 523,
+              "extracted_chars": 5168,
+              "cer": 0.1918,
+              "max_cer_threshold": 0.1,
+              "entity_recall": 0.5,
+              "parsed_clauses": 14,
+              "expected_min_clauses": 10
+            },
+            {
+              "id": "OCR-PDF-012",
+              "suite": "ocr",
+              "doc_type": "digital_pdf",
+              "language": "en",
+              "status": "FAILED",
+              "passed": false,
+              "latency_ms": 352,
+              "extracted_chars": 9310,
+              "cer": 0.0694,
+              "max_cer_threshold": 0.03,
+              "entity_recall": 1.0,
+              "parsed_clauses": 17,
+              "expected_min_clauses": 15
+            },
+            {
+              "id": "OCR-PDF-013",
+              "suite": "ocr",
+              "doc_type": "digital_pdf",
+              "language": "en",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 210,
+              "extracted_chars": 8999,
+              "cer": 0.0,
+              "max_cer_threshold": 0.03,
+              "entity_recall": 1.0,
+              "parsed_clauses": 25,
+              "expected_min_clauses": 10
+            }
+          ]
+        },
+        {
+          "suite": "rag",
+          "summary": {
+            "total": 55,
+            "mode": "dry_run_schema_validated"
+          },
+          "cases": [
+            {
+              "id": "RAG-BN-001",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-002",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-003",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-004",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-005",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-006",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-007",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-008",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-009",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-010",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-011",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-012",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-013",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-014",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-015",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-016",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-017",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-018",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-019",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-020",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-021",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BN-022",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-EN-001",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-EN-002",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-EN-003",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-EN-004",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-EN-005",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-EN-006",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-EN-007",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-EN-008",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-EN-009",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-EN-010",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-EN-011",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-EN-012",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-EN-013",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-EN-014",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-EN-015",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-EN-016",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BGL-001",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BGL-002",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BGL-003",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BGL-004",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BGL-005",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BGL-006",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BGL-007",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BGL-008",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BGL-009",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-BGL-010",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-MCP-001",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-MCP-002",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-MCP-003",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-MCP-004",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-MCP-005",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-MCP-006",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "RAG-MCP-007",
+              "suite": "rag",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            }
+          ]
+        },
+        {
+          "suite": "hallucination",
+          "summary": {
+            "total": 18,
+            "mode": "dry_run_schema_validated"
+          },
+          "cases": [
+            {
+              "id": "HAL-FAKE-001",
+              "suite": "hallucination",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "HAL-FAKE-002",
+              "suite": "hallucination",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "HAL-FAKE-003",
+              "suite": "hallucination",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "HAL-FAKE-004",
+              "suite": "hallucination",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "HAL-FAKE-005",
+              "suite": "hallucination",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "HAL-FAKE-006",
+              "suite": "hallucination",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "HAL-OOS-001",
+              "suite": "hallucination",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "HAL-OOS-002",
+              "suite": "hallucination",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "HAL-OOS-003",
+              "suite": "hallucination",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "HAL-OOS-004",
+              "suite": "hallucination",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "HAL-OOS-005",
+              "suite": "hallucination",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "HAL-OOS-006",
+              "suite": "hallucination",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "HAL-SEC-001",
+              "suite": "hallucination",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "HAL-SEC-002",
+              "suite": "hallucination",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "HAL-SEC-003",
+              "suite": "hallucination",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "HAL-SEC-004",
+              "suite": "hallucination",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "HAL-SEC-005",
+              "suite": "hallucination",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            },
+            {
+              "id": "HAL-SEC-006",
+              "suite": "hallucination",
+              "status": "PASSED",
+              "passed": true,
+              "latency_ms": 0,
+              "mode": "dry_run"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

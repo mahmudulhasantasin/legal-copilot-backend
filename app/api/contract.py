@@ -198,10 +198,12 @@ async def upload_and_audit(
     playbook_rules = []
     if current_user.is_enterprise_user and current_user.enterprise_id:
         pb = await db.scalar(
-            select(CompanyPlaybook).where(
+            select(CompanyPlaybook)
+            .where(
                 CompanyPlaybook.enterprise_id == current_user.enterprise_id,
-                CompanyPlaybook.is_active == True
+                CompanyPlaybook.is_active == True,
             )
+            .order_by(CompanyPlaybook.created_at.desc(), CompanyPlaybook.id.desc())
         )
         if pb and pb.rules_json:
             playbook_rules = pb.rules_json

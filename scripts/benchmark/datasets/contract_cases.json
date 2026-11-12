@@ -1,1 +1,832 @@
-- no code yet
+{
+  "dataset_name": "advotech_contract_audit_gold_v1",
+  "version": "1.0.0",
+  "description": "32 gold contract audit cases covering all domains including Bengali Property Sale (LSA-2026-002) and Full Software Development Agreement (SDA-2026-011) with Playbook enforcement.",
+  "cases": [
+    {
+      "id": "CON-EMP-001",
+      "domain": "EMPLOYMENT_SERVICE",
+      "audited_for": "VENDOR",
+      "context_length": "SHORT",
+      "contract_title": "Post-Employment Restraint Micro-Clause",
+      "contract_text": "CLAUSE 6: NON-COMPETE\nUpon termination or resignation for any reason, Employee shall not join, consult for, or establish any competing software or IT business anywhere in Bangladesh for a period of three (3) years.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "6",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "VOID_AB_INITIO",
+          "expected_law_keywords": ["Contract Act", "1872", "27"]
+        }
+      ],
+      "expected_missing_provisions": ["STATUTORY_NOTICE_PERIOD"],
+      "notes": "Post-employment non-compete is VOID_AB_INITIO under Contract Act s.27."
+    },
+    {
+      "id": "CON-EMP-002",
+      "domain": "EMPLOYMENT_SERVICE",
+      "audited_for": "VENDOR",
+      "context_length": "SHORT",
+      "contract_title": "At-Will Instant Termination Clause",
+      "contract_text": "CLAUSE 3: TERMINATION\nThe Employer reserves the absolute right to terminate the permanent Employee at any time with immediate effect without assigning any reason, without prior notice, and without any severance or notice pay.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "3",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "REGULATORY_NON_COMPLIANT",
+          "expected_law_keywords": ["Labour Act", "2006", "26"]
+        }
+      ],
+      "expected_missing_provisions": ["STATUTORY_NOTICE_PERIOD", "PROVIDENT_FUND_GRATUITY"],
+      "notes": "Violates Bangladesh Labour Act 2006 Section 26 (120/60 days notice or pay in lieu + 30 days/year compensation)."
+    },
+    {
+      "id": "CON-EMP-003",
+      "domain": "EMPLOYMENT_SERVICE",
+      "audited_for": "NEUTRAL",
+      "context_length": "MEDIUM",
+      "contract_title": "Compliant Permanent Employment Agreement",
+      "contract_text": "CLAUSE 1: APPOINTMENT AND PROBATION\nEmployee is appointed as Senior Operations Manager subject to a 3-month probation period.\n\nCLAUSE 2: TERMINATION AND SEVERANCE\nAfter confirmation as a permanent monthly-rated employee, Employer may terminate employment by giving 120 days prior written notice or wages in lieu thereof, together with statutory compensation of 30 days wages for each completed year of service or gratuity, whichever is higher, in accordance with Section 26 of the Bangladesh Labour Act, 2006.\n\nCLAUSE 3: PROVIDENT FUND AND GRATUITY\nEmployee shall be entitled to statutory provident fund and gratuity benefits upon separation.\n\nCLAUSE 4: CONFIDENTIALITY\nDuring and after employment, Employee shall not disclose proprietary trade secrets or confidential client lists of the Employer. Nothing herein restricts lawful future employment.",
+      "playbook_rules": [],
+      "expected_overall_risk": "LOW",
+      "expected_violations": [],
+      "expected_missing_provisions": [],
+      "notes": "Compliant baseline employment contract — tests low false-positive rate."
+    },
+    {
+      "id": "CON-EMP-004",
+      "domain": "EMPLOYMENT_SERVICE",
+      "audited_for": "VENDOR",
+      "context_length": "MEDIUM",
+      "contract_title": "Training Bond & Certificate Retention",
+      "contract_text": "CLAUSE 5: MINIMUM SERVICE BOND\nEmployee agrees to serve the Company for a mandatory lock-in period of 4 years. If Employee resigns early, Employee shall forfeit all unpaid salary and pay BDT 10,00,000 as fixed liquidated penalty regardless of actual training cost.\n\nCLAUSE 6: ORIGINAL DOCUMENTS\nCompany shall retain Employee's original university degree certificates and NID card in custody until completion of the 4-year bond.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "5",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "STATUTORILY_RESTRICTED",
+          "expected_law_keywords": ["74", "Contract Act"]
+        },
+        {
+          "clause_number": "6",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "REGULATORY_NON_COMPLIANT",
+          "expected_law_keywords": ["Labour Act", "27"]
+        }
+      ],
+      "expected_missing_provisions": ["STATUTORY_NOTICE_PERIOD"],
+      "notes": "Tests Section 74 penalty moderation + illegal retention of original documents / restraint."
+    },
+    {
+      "id": "CON-EMP-005",
+      "domain": "EMPLOYMENT_SERVICE",
+      "audited_for": "CLIENT",
+      "context_length": "MEDIUM",
+      "contract_title": "Employer-Perspective Audit on IP & Confidentiality",
+      "contract_text": "CLAUSE 1: DUTIES\nEmployee will develop proprietary fintech algorithms for the Employer.\n\nCLAUSE 2: TERMINATION\nEither party may terminate with 120 days notice and statutory benefits under Bangladesh Labour Act, 2006.\n\nCLAUSE 3: INTELLECTUAL PROPERTY\nEmployee retains personal copyright over all scripts and tools written outside standard 9am-5pm hours even if deployed on Employer servers.\n\nCLAUSE 4: PROVIDENT FUND\nStatutory gratuity and provident fund apply.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "3",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["Copyright", "IP"]
+        }
+      ],
+      "expected_missing_provisions": [],
+      "notes": "Audited for CLIENT (Employer): must catch Clause 3 IP ownership risk."
+    },
+    {
+      "id": "CON-TECH-001",
+      "domain": "TECH_SAAS_VENDOR",
+      "audited_for": "CLIENT",
+      "context_length": "SHORT",
+      "contract_title": "Punitive Compounding Interest Clause",
+      "contract_text": "SAAS SUBSCRIPTION AGREEMENT\nCLAUSE 4: CONTRACT VALUE AND PAYMENT TERMS\nIf Client delays any invoice payment by more than 5 business days, Client shall automatically pay a compounding late payment penalty of 5% per month (60% per annum) on the entire contract value until settled.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "4",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "STATUTORILY_RESTRICTED",
+          "expected_law_keywords": ["Contract Act", "1872", "74"]
+        }
+      ],
+      "expected_missing_provisions": ["IP_ASSIGNMENT", "DATA_BREACH_NOTICE"],
+      "notes": "Must classify excessive penalty as STATUTORILY_RESTRICTED under Section 74, NOT VOID_AB_INITIO."
+    },
+    {
+      "id": "CON-TECH-002",
+      "domain": "TECH_SAAS_VENDOR",
+      "audited_for": "CLIENT",
+      "context_length": "MEDIUM",
+      "contract_title": "SaaS Vendor-Favorable IP & Advance Forfeiture",
+      "contract_text": "CLAUSE 1: SCOPE AND ADVANCE PAYMENT\nClient shall pay BDT 20,00,000 (50% advance) on signing. All advance payments are strictly non-refundable under all circumstances, including Vendor's early termination or non-delivery.\n\nCLAUSE 2: INTELLECTUAL PROPERTY\nVendor retains exclusive worldwide copyright and source code ownership of all custom software developed under this Agreement. Client receives only a revocable annual license.\n\nCLAUSE 3: ACCEPTANCE TESTING\nDeliverables shall be deemed irrevocably accepted if Client fails to submit written defect reports within 48 hours of staging upload.\n\nCLAUSE 4: LIMITATION OF LIABILITY\nVendor's total liability for data breaches, gross negligence, or willful misconduct shall not exceed BDT 10,000.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "1",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "STATUTORILY_RESTRICTED",
+          "expected_law_keywords": ["64", "65", "Contract Act"]
+        },
+        {
+          "clause_number": "2",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["Copyright"]
+        },
+        {
+          "clause_number": "4",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["Cyber", "liability"]
+        }
+      ],
+      "expected_missing_provisions": ["DATA_BREACH_NOTICE", "MUTUAL_IP_INDEMNIFICATION", "THIRD_PARTY_OSS_WARRANTY"],
+      "notes": "Multi-clause Tech SaaS audit protecting Client."
+    },
+    {
+      "id": "CON-TECH-003",
+      "domain": "TECH_SAAS_VENDOR",
+      "audited_for": "VENDOR",
+      "context_length": "MEDIUM",
+      "contract_title": "Client-Favorable Unlimited Liability & IP Pre-Payment Trap",
+      "contract_text": "CUSTOM SOFTWARE DEVELOPMENT AGREEMENT\nCLAUSE 1: PAYMENT\nClient will pay invoices within 120 days of final go-live sign-off at Client's sole subjective satisfaction.\n\nCLAUSE 2: INTELLECTUAL PROPERTY\nAll pre-existing Vendor frameworks, libraries, and future know-how become Client's exclusive property upon signing, even prior to payment.\n\nCLAUSE 3: INDEMNITY AND LIABILITY\nVendor assumes unlimited liability for any indirect, consequential, or lost-profit damages suffered by Client, with no liability cap.\n\nCLAUSE 4: CHANGE REQUESTS\nVendor shall implement any additional features requested by Client during the project at zero additional fee.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "2",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["Copyright", "IP"]
+        },
+        {
+          "clause_number": "3",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["73", "Contract Act"]
+        }
+      ],
+      "expected_missing_provisions": [],
+      "notes": "Perspective flip test: audited_for=VENDOR must protect Vendor against unlimited liability, scope creep, and pre-payment IP loss."
+    },
+    {
+      "id": "CON-TECH-004",
+      "domain": "TECH_SAAS_VENDOR",
+      "audited_for": "CLIENT",
+      "context_length": "MEDIUM",
+      "contract_title": "Compliant Balanced Software Development Agreement",
+      "contract_text": "CLAUSE 1: DELIVERABLES AND ACCEPTANCE\nVendor shall deliver custom software modules per Appendix A. Client shall have 15 business days for User Acceptance Testing (UAT) and Vendor shall fix defects within 10 business days.\n\nCLAUSE 2: INTELLECTUAL PROPERTY ASSIGNMENT\nUpon full payment of milestone fees, Vendor hereby assigns all copyright and source code ownership of custom deliverables to Client in writing pursuant to Copyright Act, 2000 (Sections 15, 17). Vendor warrants no copyleft Open Source Software (GPL) is embedded without Client's written approval.\n\nCLAUSE 3: DATA SECURITY AND BREACH NOTIFICATION\nVendor shall maintain encryption and notify Client within 48 hours of any data security breach in compliance with the Cyber Security Act, 2023.\n\nCLAUSE 4: TERMINATION AND REFUND\nUpon termination for Vendor breach, Vendor shall refund all unearned advance payments for unperformed services within 15 days under Sections 64 and 65 of The Contract Act, 1872.\n\nCLAUSE 5: IP INDEMNIFICATION & DISPUTE RESOLUTION\nVendor indemnifies Client against third-party IP infringement claims. Disputes shall be resolved by arbitration seated in Dhaka under the Arbitration Act, 2001.",
+      "playbook_rules": [],
+      "expected_overall_risk": "LOW",
+      "expected_violations": [],
+      "expected_missing_provisions": [],
+      "notes": "Compliant baseline SaaS agreement — should NOT falsely flag HIGH risks."
+    },
+    {
+      "id": "CON-TECH-005",
+      "domain": "TECH_SAAS_VENDOR",
+      "audited_for": "CLIENT",
+      "context_length": "MEDIUM",
+      "contract_title": "Enterprise Playbook Enforcement Test",
+      "contract_text": "ENTERPRISE SAAS SERVICES AGREEMENT\nCLAUSE 1: PAYMENT TERMS\nClient shall pay 100% of annual fee upfront. Invoices are net-7.\n\nCLAUSE 2: LIABILITY CAP\nVendor liability is capped at 1 month of fees.\n\nCLAUSE 3: DISPUTE RESOLUTION\nAll disputes shall be resolved via arbitration in Dhaka under Arbitration Act, 2001.",
+      "playbook_rules": [
+        {
+          "rule_id": "RULE-FIN-01",
+          "category": "Payment Terms",
+          "rule_description": "Enterprise policy prohibits 100% upfront payment; maximum allowable advance is 30% with minimum Net-30 invoice terms.",
+          "severity": "HIGH",
+          "suggested_redline": "Client shall pay 30% mobilization advance and remaining 70% on milestone delivery within Net-30 days."
+        },
+        {
+          "rule_id": "RULE-LIAB-02",
+          "category": "Liability",
+          "rule_description": "Vendor aggregate liability cap must be at least 12 months of contract fees.",
+          "severity": "HIGH",
+          "suggested_redline": "Vendor's aggregate liability shall be capped at 100% of total fees paid in the preceding 12 months."
+        }
+      ],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "1",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["RULE-FIN-01", "Playbook"]
+        },
+        {
+          "clause_number": "2",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["RULE-LIAB-02", "Playbook"]
+        }
+      ],
+      "expected_missing_provisions": ["IP_ASSIGNMENT", "DATA_BREACH_NOTICE"],
+      "notes": "Tests Enterprise Company Playbook Rule ID citation enforcement."
+    },
+    {
+      "id": "CON-TECH-006",
+      "domain": "TECH_SAAS_VENDOR",
+      "audited_for": "CLIENT",
+      "context_length": "LONG",
+      "contract_title": "Long MSA Needle-in-a-Haystack Risk Test (~9,000 chars)",
+      "contract_text": "MASTER SOFTWARE SERVICES AGREEMENT\n\nCLAUSE 1: DEFINITIONS\n1.1 'Affiliate' means any entity that directly or indirectly controls, is controlled by, or is under common control with a Party, where control means ownership of more than fifty percent (50%) of voting securities.\n1.2 'Business Day' means any day other than a Friday, Saturday, or gazetted public holiday declared by the Government of the People's Republic of Bangladesh in Dhaka.\n1.3 'Confidential Information' means all non-public technical, financial, commercial, architectural, and customer data disclosed by either Party in written, oral, or electronic form.\n1.4 'Deliverables' means the software code, technical documentation, API specifications, and deployment scripts set forth in an executed Statement of Work.\n1.5 'Documentation' means user manuals, system administration guides, and API reference sheets provided by Vendor in English.\n\nCLAUSE 2: GOVERNANCE AND SERVICE LEVELS\n2.1 Vendor shall assign a dedicated Project Manager who shall conduct weekly sprint review calls with Client's designated Product Owner.\n2.2 Production services hosted under this Agreement shall maintain 99.9% monthly uptime availability excluding scheduled maintenance windows announced 72 hours in advance.\n2.3 Service credits for uptime shortfall below 99.9% shall be applied against the subsequent quarterly invoice in accordance with Schedule B.\n2.4 Vendor shall maintain automated daily encrypted backups stored across redundant availability zones with a Recovery Point Objective (RPO) of 4 hours and Recovery Time Objective (RTO) of 8 hours.\n\nCLAUSE 3: INTELLECTUAL PROPERTY ASSIGNMENT\n3.1 Upon full payment of the applicable milestone invoice, Vendor hereby irrevocably assigns to Client all right, title, and interest, including worldwide copyright and source code ownership, in all custom Deliverables created specifically for Client pursuant to the Copyright Act, 2000.\n3.2 Vendor represents and warrants that no GPL or copyleft Open Source Software requiring source disclosure will be embedded in Deliverables without Client's prior written consent.\n3.3 Vendor shall defend and indemnify Client against any third-party claim alleging that Deliverables infringe a valid patent or copyright.\n\nCLAUSE 4: DATA SECURITY AND INCIDENT NOTIFICATION\n4.1 Vendor shall implement industry-standard encryption (AES-256 at rest, TLS 1.3 in transit), role-based access controls, and annual penetration testing.\n4.2 In the event of any confirmed or suspected unauthorized access or personal data breach, Vendor shall notify Client in writing within 48 hours and cooperate fully with remediation under the Cyber Security Act, 2023.\n4.3 Vendor shall not engage any sub-processor without Client's prior written authorization.\n\nCLAUSE 5: ACCEPTANCE TESTING\n5.1 Client shall have fifteen (15) Business Days following delivery of each milestone to perform User Acceptance Testing (UAT).\n5.2 If Client identifies material non-conformities, Vendor shall cure such defects at no additional charge within ten (10) Business Days.\n\nCLAUSE 6: AUDIT RIGHTS AND COMPLIANCE\n6.1 During the term and for one (1) year thereafter, Client or its independent auditor may inspect relevant security and billing records upon 15 days notice during regular business hours.\n6.2 Both Parties shall comply with applicable anti-bribery, anti-corruption, and tax withholding laws of Bangladesh.\n\nCLAUSE 7: SPECIAL RESTRICTIVE COVENANTS AND LIQUIDATED DAMAGES\n7.1 Notwithstanding anything to the contrary in this Agreement, upon termination or expiry of this Agreement for any reason, Client and its key engineering personnel shall be prohibited from developing, procuring, or operating any competing retail analytics platform anywhere in Bangladesh for a period of five (5) years. Furthermore, if Client delays any invoice payment by more than three (3) days, Client shall pay a non-negotiable compounding penalty of 10% per month (120% per annum) and Vendor shall retain all advance deposits paid by Client even if Vendor terminates for convenience without delivering remaining milestones.\n\nCLAUSE 8: INSURANCE\n8.1 Vendor shall maintain commercial general liability and cyber liability insurance policies with reputable insurers licensed in Bangladesh throughout the Term.\n8.2 Vendor shall furnish certificates of insurance within 14 days of Client's written request.\n\nCLAUSE 9: FORCE MAJEURE\n9.1 Neither Party shall be liable for failure to perform due to unforeseeable events beyond reasonable control such as floods, earthquakes, war, or nationwide telecommunications shutdowns, provided written notice is given within 72 hours.\n9.2 Normal inflation, currency fluctuation, or supplier pricing increases shall not constitute a Force Majeure event.\n\nCLAUSE 10: REPRESENTATIONS AND WARRANTIES\n10.1 Each Party represents that it is duly incorporated and validly existing under the laws of Bangladesh and has full corporate authority to execute this Agreement.\n10.2 Vendor warrants that Deliverables will substantially conform to specifications for 90 days post-acceptance and will be free from malicious code or backdoors.\n\nCLAUSE 11: NOTICES\n11.1 All formal notices shall be in writing and delivered by hand with acknowledgement or by registered post with A/D to the registered office addresses in Dhaka specified on the signature page, with courtesy copy by email.\n\nCLAUSE 12: DISPUTE RESOLUTION AND GOVERNING LAW\n12.1 This Agreement shall be governed by and construed in accordance with the laws of the People's Republic of Bangladesh.\n12.2 Any dispute not amicably settled within 30 days shall be referred to binding domestic arbitration seated in Dhaka in accordance with the Arbitration Act, 2001 before a sole arbitrator mutually appointed by the Parties.\n\nCLAUSE 13: MISCELLANEOUS\n13.1 This Agreement constitutes the entire agreement between the Parties and supersedes prior negotiations.\n13.2 Amendments require a written instrument signed by authorized representatives of both Parties.\n13.3 Failure to enforce any right shall not operate as a waiver thereof.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "7",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "VOID_AB_INITIO",
+          "expected_law_keywords": ["27", "Contract Act"]
+        },
+        {
+          "clause_number": "7",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "STATUTORILY_RESTRICTED",
+          "expected_law_keywords": ["74", "65", "Contract Act"]
+        }
+      ],
+      "expected_missing_provisions": [],
+      "notes": "Long-context Needle-in-a-Haystack test: Clauses 1-6 and 8-13 are clean/compliant, but Clause 7 buries 3 severe Bangladesh statutory violations (s.27 non-compete, s.74 120% penalty, s.65 advance forfeiture)."
+    },
+    {
+      "id": "CON-LEASE-001",
+      "domain": "COMMERCIAL_LEASE",
+      "audited_for": "CLIENT",
+      "context_length": "SHORT",
+      "contract_title": "Unregistered 5-Year Commercial Lease on Plain Paper",
+      "contract_text": "CLAUSE 1: TERM AND EXECUTION\nLandlord hereby leases the 4,000 sq. ft. commercial office space in Gulshan-2, Dhaka to Tenant for a fixed term of five (5) years at BDT 3,50,000 per month. This lease deed is executed exclusively on plain A4 paper and shall not be registered at the Sub-Registry Office.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "1",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "REGULATORY_NON_COMPLIANT",
+          "expected_law_keywords": ["Registration Act", "1908", "17", "Stamp"]
+        }
+      ],
+      "expected_missing_provisions": ["SECURITY_DEPOSIT_RETURN"],
+      "notes": "Lease > 1 year on plain paper violates Registration Act s.17/s.49 & Stamp Act 1899."
+    },
+    {
+      "id": "CON-LEASE-002",
+      "domain": "COMMERCIAL_LEASE",
+      "audited_for": "CLIENT",
+      "context_length": "MEDIUM",
+      "contract_title": "Forfeitable Security Deposit & Unilateral Eviction",
+      "contract_text": "CLAUSE 2: SECURITY DEPOSIT\nTenant shall deposit BDT 20,00,000 as interest-free security deposit. Landlord may forfeit the entire security deposit at Landlord's sole discretion upon termination without itemized repair bills.\n\nCLAUSE 3: EVICTION\nLandlord may disconnect electricity and lock the premises immediately without court order or notice if rent is delayed by 3 days.\n\nCLAUSE 4: REGISTRATION\nThis 3-year lease will be registered on appropriate non-judicial stamp paper.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "2",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "STATUTORILY_RESTRICTED",
+          "expected_law_keywords": ["65", "74", "Contract Act", "Premises Rent"]
+        },
+        {
+          "clause_number": "3",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "REGULATORY_NON_COMPLIANT",
+          "expected_law_keywords": ["Premises Rent", "Transfer of Property"]
+        }
+      ],
+      "expected_missing_provisions": [],
+      "notes": "Tenant protection against arbitrary deposit forfeiture and self-help utility disconnection."
+    },
+    {
+      "id": "CON-LEASE-003",
+      "domain": "COMMERCIAL_LEASE",
+      "audited_for": "VENDOR",
+      "context_length": "MEDIUM",
+      "contract_title": "Landlord-Perspective Rent Freeze & Indefinite Holdover",
+      "contract_text": "CLAUSE 1: RENT ESCALATION\nMonthly rent shall remain fixed at BDT 1,00,000 for 10 years with zero escalation regardless of municipal tax increases.\n\nCLAUSE 2: TERMINATION BY LANDLORD\nLandlord waives all rights to terminate the lease even for Tenant's non-payment of rent for up to 12 consecutive months.\n\nCLAUSE 3: REGISTRATION\nExecuted on proper non-judicial stamp paper and registered under Registration Act, 1908.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "2",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["Transfer of Property", "rent"]
+        }
+      ],
+      "expected_missing_provisions": [],
+      "notes": "Audited for VENDOR (Landlord): catches 12-month non-payment waiver."
+    },
+    {
+      "id": "CON-LEASE-004",
+      "domain": "COMMERCIAL_LEASE",
+      "audited_for": "NEUTRAL",
+      "context_length": "MEDIUM",
+      "contract_title": "Compliant Registered Commercial Lease",
+      "contract_text": "CLAUSE 1: TERM AND REGISTRATION\nLandlord leases the commercial premises for 3 years. This deed shall be executed on appropriate non-judicial stamp paper under The Stamp Act, 1899 and duly registered at the concerned Sub-Registry Office pursuant to Section 17 of The Registration Act, 1908.\n\nCLAUSE 2: SECURITY DEPOSIT RETURN\nTenant pays 3 months rent as security deposit, refundable within 30 days of vacant handover subject only to documented unpaid utilities or damage beyond normal wear and tear.\n\nCLAUSE 3: TERMINATION\nEither party may terminate upon 90 days prior written notice.",
+      "playbook_rules": [],
+      "expected_overall_risk": "LOW",
+      "expected_violations": [],
+      "expected_missing_provisions": [],
+      "notes": "Compliant lease baseline."
+    },
+    {
+      "id": "CON-NDA-001",
+      "domain": "NDA_CONFIDENTIALITY",
+      "audited_for": "VENDOR",
+      "context_length": "SHORT",
+      "contract_title": "NDA Disguised as Broad Non-Compete",
+      "contract_text": "CLAUSE 4: RESTRICTIVE COVENANT\nUnder the guise of protecting confidential information, Receiving Party agrees not to provide software, consulting, or marketing services to any company operating in the banking or telecom sector in Bangladesh for 5 years.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "4",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "VOID_AB_INITIO",
+          "expected_law_keywords": ["27", "Contract Act"]
+        }
+      ],
+      "expected_missing_provisions": [],
+      "notes": "NDA cannot disguise a sector-wide non-compete; void under Section 27."
+    },
+    {
+      "id": "CON-NDA-002",
+      "domain": "NDA_CONFIDENTIALITY",
+      "audited_for": "CLIENT",
+      "context_length": "MEDIUM",
+      "contract_title": "NDA Missing Standard Carve-Outs & Court Compulsion Exception",
+      "contract_text": "CLAUSE 1: DEFINITION OF CONFIDENTIAL INFORMATION\nAll information shared by Disclosing Party, including information already in the public domain or independently developed by Receiving Party, is permanently confidential.\n\nCLAUSE 2: NO LEGAL DISCLOSURE\nReceiving Party shall never disclose Confidential Information even if ordered by a competent Court of Bangladesh or regulatory authority.\n\nCLAUSE 3: REMEDIES\nAny breach triggers automatic liquidated damages of BDT 5,00,00,000 without proof of harm.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "2",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "VOID_AB_INITIO",
+          "expected_law_keywords": ["28", "Contract Act", "court"]
+        },
+        {
+          "clause_number": "3",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "STATUTORILY_RESTRICTED",
+          "expected_law_keywords": ["74", "Contract Act"]
+        }
+      ],
+      "expected_missing_provisions": ["STANDARD_EXCLUSIONS"],
+      "notes": "Prohibiting compliance with court orders + excessive BDT 5 Crore liquidated penalty."
+    },
+    {
+      "id": "CON-NDA-003",
+      "domain": "NDA_CONFIDENTIALITY",
+      "audited_for": "NEUTRAL",
+      "context_length": "MEDIUM",
+      "contract_title": "Compliant Mutual NDA",
+      "contract_text": "CLAUSE 1: CONFIDENTIAL INFORMATION AND EXCLUSIONS\nConfidential Information excludes information that (a) becomes publicly available without breach, (b) was lawfully known prior to disclosure, (c) is independently developed, or (d) is required to be disclosed by order of a competent court in Bangladesh upon prior notice.\n\nCLAUSE 2: TERM\nConfidentiality obligations survive for 3 years from disclosure; trade secrets remain protected as long as they qualify as trade secrets.\n\nCLAUSE 3: INJUNCTIVE RELIEF\nDisclosing Party may seek injunctive relief under The Specific Relief Act, 1877 for threatened breach.",
+      "playbook_rules": [],
+      "expected_overall_risk": "LOW",
+      "expected_violations": [],
+      "expected_missing_provisions": [],
+      "notes": "Compliant Mutual NDA baseline."
+    },
+    {
+      "id": "CON-GEN-001",
+      "domain": "GENERAL_COMMERCIAL",
+      "audited_for": "CLIENT",
+      "context_length": "SHORT",
+      "contract_title": "Waiver of Right to Sue & Shortened Limitation Period",
+      "contract_text": "CLAUSE 9: LEGAL PROCEEDINGS\nBuyer hereby permanently waives its right to initiate any civil suit, arbitration, or legal proceeding against Seller in any court in Bangladesh. Any claim not filed within 15 days of invoice date shall be forever time-barred.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "9",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "VOID_AB_INITIO",
+          "expected_law_keywords": ["28", "Contract Act"]
+        }
+      ],
+      "expected_missing_provisions": [],
+      "notes": "Absolute restriction on legal proceedings + curtailing statutory limitation is void under Contract Act Section 28."
+    },
+    {
+      "id": "CON-GEN-002",
+      "domain": "GENERAL_COMMERCIAL",
+      "audited_for": "CLIENT",
+      "context_length": "MEDIUM",
+      "contract_title": "Force Majeure Abused for Normal Price Inflation",
+      "contract_text": "CLAUSE 6: FORCE MAJEURE & PRICE ESCALATION\nSupplier may unilaterally cancel this fixed-price supply contract without liability or refunding Client's BDT 12,00,000 advance under Section 56 (Force Majeure) whenever raw material prices or USD exchange rates fluctuate by more than 5%.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "6",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "STATUTORILY_RESTRICTED",
+          "expected_law_keywords": ["56", "65", "Contract Act"]
+        }
+      ],
+      "expected_missing_provisions": [],
+      "notes": "Normal price/FX fluctuations do not qualify under Section 56 frustration; advance must be restored under s.65."
+    },
+    {
+      "id": "CON-GEN-003",
+      "domain": "GENERAL_COMMERCIAL",
+      "audited_for": "VENDOR",
+      "context_length": "MEDIUM",
+      "contract_title": "Supplier Unilateral Termination & Zero Payment Protection",
+      "contract_text": "CLAUSE 3: ACCEPTANCE AND PAYMENT\nBuyer may reject delivered goods for any subjective reason up to 180 days after delivery and withhold 100% of payment, while retaining and reselling the goods.\n\nCLAUSE 4: DISPUTE RESOLUTION\nAny dispute shall be decided solely by Buyer's Managing Director, whose decision shall be final and binding without appeal.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "3",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["Contract Act", "73"]
+        },
+        {
+          "clause_number": "4",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "VOID_AB_INITIO",
+          "expected_law_keywords": ["28", "Contract Act", "Arbitration"]
+        }
+      ],
+      "expected_missing_provisions": [],
+      "notes": "One-sided judge-in-own-cause dispute clause + unfair payment withholding."
+    },
+    {
+      "id": "CON-EMP-006",
+      "domain": "EMPLOYMENT_SERVICE",
+      "audited_for": "VENDOR",
+      "context_length": "LONG",
+      "contract_title": "Long Employment Contract with Buried Unlawful Deductions (~7,500 chars)",
+      "contract_text": "EMPLOYMENT AGREEMENT\n\nCLAUSE 1: POSITION AND WORKPLACE\n1.1 Employer hereby engages Employee as Senior Finance Analyst at its Dhaka Corporate Office.\n1.2 Standard working hours shall be Sunday through Thursday, 9:00 AM to 5:30 PM, with statutory weekly holidays and festival leaves under the Bangladesh Labour Act, 2006.\n\nCLAUSE 2: REMUNERATION AND BENEFITS\n2.1 Employee shall receive a gross monthly salary of BDT 95,000 payable on or before the 5th working day of the following month via bank transfer.\n2.2 Employee shall be entitled to annual festival bonuses equivalent to two basic salaries and contributory provident fund after confirmation.\n2.3 Gratuity shall be payable upon separation in accordance with statutory thresholds.\n\nCLAUSE 3: LEAVE ENTITLEMENTS\n3.1 Employee shall be entitled to 10 days casual leave, 14 days sick leave with medical certificate, and annual earned leave as prescribed by Chapter IX of the Bangladesh Labour Act, 2006.\n3.2 Unavailed earned leave shall be encashed upon termination or retirement.\n\nCLAUSE 4: CODE OF CONDUCT AND SAFETY\n4.1 Employer maintains a zero-tolerance policy against workplace harassment and ensures safe working conditions.\n4.2 Employee shall comply with published IT acceptable use and expense reimbursement guidelines.\n\nCLAUSE 5: CONFIDENTIALITY DURING EMPLOYMENT\n5.1 Employee shall safeguard proprietary financial models, client account records, and pricing matrices during employment and thereafter.\n\nCLAUSE 6: SPECIAL SEPARATION, DEDUCTION AND NON-COMPETE TERMS\n6.1 Regardless of tenure, if Employer terminates Employee for business restructuring, Employer shall give only 7 days notice with zero statutory severance or compensation. Furthermore, upon any separation, Employee is barred from working in any accounting, audit, or finance role anywhere in Bangladesh for 3 years, and Employer may unilaterally deduct 50% of Employee's final salary as an administrative separation fee.\n\nCLAUSE 7: GOVERNING LAW\n7.1 This Agreement is governed by the laws of Bangladesh, including the Bangladesh Labour Act, 2006.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "6",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "REGULATORY_NON_COMPLIANT",
+          "expected_law_keywords": ["Labour Act", "26", "125"]
+        },
+        {
+          "clause_number": "6",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "VOID_AB_INITIO",
+          "expected_law_keywords": ["27", "Contract Act"]
+        }
+      ],
+      "expected_missing_provisions": [],
+      "notes": "Long employment contract with buried violations in Clause 6."
+    },
+    {
+      "id": "CON-TECH-007",
+      "domain": "TECH_SAAS_VENDOR",
+      "audited_for": "CLIENT",
+      "context_length": "SHORT",
+      "contract_title": "Unilateral Pricing & Tech Stack Downgrade",
+      "contract_text": "CLOUD SAAS SUBSCRIPTION TERMS\nCLAUSE 5: SERVICE MODIFICATION\nVendor may unilaterally increase subscription fees by up to 200% mid-year with 24 hours email notice and may deprecate core API endpoints without backward compatibility or refund.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "5",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["Contract Act", "consent"]
+        }
+      ],
+      "expected_missing_provisions": ["IP_ASSIGNMENT", "DATA_BREACH_NOTICE"],
+      "notes": "Unilateral pricing & feature deprecation risk for Client."
+    },
+    {
+      "id": "CON-TECH-008",
+      "domain": "TECH_SAAS_VENDOR",
+      "audited_for": "CLIENT",
+      "context_length": "MEDIUM",
+      "contract_title": "Missing OSS & Sub-processor Consent in AI/SaaS Deal",
+      "contract_text": "CLAUSE 1: DELIVERABLES\nVendor will build a proprietary risk engine for Client and assign custom code upon final payment.\n\nCLAUSE 2: THIRD-PARTY TOOLS & SUB-PROCESSORS\nVendor may freely incorporate any open-source packages including AGPL/GPL libraries into Client's core product without notice, and may transfer Client's live customer database to unnamed offshore sub-processors without Client consent or breach notice obligations.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "2",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "REGULATORY_NON_COMPLIANT",
+          "expected_law_keywords": ["Copyright", "Cyber Security"]
+        }
+      ],
+      "expected_missing_provisions": ["DATA_BREACH_NOTICE", "MUTUAL_IP_INDEMNIFICATION"],
+      "notes": "OSS copyleft contamination + unauthorized data sub-processing."
+    },
+    {
+      "id": "CON-LEASE-005",
+      "domain": "COMMERCIAL_LEASE",
+      "audited_for": "CLIENT",
+      "context_length": "MEDIUM",
+      "contract_title": "Commercial Sublease Prohibition & Arbitrary Structural Penalty",
+      "contract_text": "CLAUSE 4: STAMP PAPER\nThis 2-year lease is written on a single BDT 100 non-judicial stamp without registration.\n\nCLAUSE 5: PENALTY FOR OVERSTAY\nIf Tenant overstays even 1 day after expiry while negotiating renewal, Tenant shall pay 500% daily rent as punitive liquidated penalty.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "4",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "REGULATORY_NON_COMPLIANT",
+          "expected_law_keywords": ["Stamp Act", "Registration Act", "17"]
+        },
+        {
+          "clause_number": "5",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "STATUTORILY_RESTRICTED",
+          "expected_law_keywords": ["74", "Contract Act"]
+        }
+      ],
+      "expected_missing_provisions": ["SECURITY_DEPOSIT_RETURN"],
+      "notes": "Under-stamped + unregistered 2-year lease + 500% Section 74 penalty."
+    },
+    {
+      "id": "CON-NDA-004",
+      "domain": "NDA_CONFIDENTIALITY",
+      "audited_for": "VENDOR",
+      "context_length": "SHORT",
+      "contract_title": "Residual Memory Trap in NDA",
+      "contract_text": "CONFIDENTIALITY AGREEMENT\nCLAUSE 3: NON-SOLICITATION & RESIDUALS\nReceiving Party's personnel who read Disclosing Party's general pitch deck are permanently barred from working on any fintech project anywhere in the world, even using general industry skills retained in unaided memory.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "3",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "VOID_AB_INITIO",
+          "expected_law_keywords": ["27", "Contract Act"]
+        }
+      ],
+      "expected_missing_provisions": ["STANDARD_EXCLUSIONS"],
+      "notes": "Overbroad NDA restraint blocking general skill employment."
+    },
+    {
+      "id": "CON-GEN-004",
+      "domain": "PROCUREMENT_SUPPLY",
+      "audited_for": "NEUTRAL",
+      "context_length": "MEDIUM",
+      "contract_title": "Compliant Supply & Arbitration Agreement",
+      "contract_text": "CLAUSE 1: DELIVERY AND QUALITY\nSupplier shall deliver 1,000 units per Schedule A within 30 days. Buyer shall inspect goods within 7 business days.\n\nCLAUSE 2: PAYMENT AND DELAY\nBuyer pays 30% advance (refundable pro-rata if Supplier fails to deliver under Section 65 of The Contract Act, 1872) and 70% within 15 days of delivery.\n\nCLAUSE 3: DISPUTE RESOLUTION\nDisputes shall be resolved by arbitration seated in Dhaka under the Arbitration Act, 2001.",
+      "playbook_rules": [],
+      "expected_overall_risk": "LOW",
+      "expected_violations": [],
+      "expected_missing_provisions": [],
+      "notes": "Compliant general commercial contract."
+    },
+    {
+      "id": "CON-GEN-005",
+      "domain": "GENERAL_COMMERCIAL",
+      "audited_for": "CLIENT",
+      "context_length": "MEDIUM",
+      "contract_title": "Foreign Governing Law for Purely Domestic Dhaka Transaction",
+      "contract_text": "CLAUSE 11: GOVERNING LAW AND JURISDICTION\nAlthough both parties are Bangladeshi companies executing and performing all work in Dhaka, this contract is governed by the laws of Cayman Islands and any claim under BDT 5,00,000 must be litigated exclusively in Cayman Islands courts.\n\nCLAUSE 12: INDEMNITY\nClient indemnifies Vendor even for Vendor's own fraud and gross negligence.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "11",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["28", "Contract Act", "jurisdiction"]
+        },
+        {
+          "clause_number": "12",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "VOID_AB_INITIO",
+          "expected_law_keywords": ["Contract Act", "fraud", "23"]
+        }
+      ],
+      "expected_missing_provisions": [],
+      "notes": "Indemnifying counterparty's own fraud + oppressive foreign forum in domestic BDT contract."
+    },
+    {
+      "id": "CON-EMP-007",
+      "domain": "EMPLOYMENT_SERVICE",
+      "audited_for": "CLIENT",
+      "context_length": "MEDIUM",
+      "contract_title": "Playbook Violation in Executive Employment Offer",
+      "contract_text": "CLAUSE 1: NOTICE PERIOD\nExecutive may resign with 7 days notice without handover.\n\nCLAUSE 2: SALARY AND BENEFITS\nSalary is BDT 2,50,000/month with provident fund and gratuity.\n\nCLAUSE 3: CONFIDENTIALITY\nStandard non-disclosure of trade secrets applies.",
+      "playbook_rules": [
+        {
+          "rule_id": "RULE-HR-04",
+          "category": "Notice Period",
+          "rule_description": "Senior Management contracts must require at least 60 days resignation notice and mandatory knowledge-transfer handover.",
+          "severity": "MODERATE",
+          "suggested_redline": "Executive shall provide 60 days prior written notice and complete structured handover."
+        }
+      ],
+      "expected_overall_risk": "MODERATE",
+      "expected_violations": [
+        {
+          "clause_number": "1",
+          "expected_severity": "MODERATE",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["RULE-HR-04", "Playbook"]
+        }
+      ],
+      "expected_missing_provisions": [],
+      "notes": "Tests MODERATE risk classification (not everything is HIGH)."
+    },
+    {
+      "id": "CON-TECH-009",
+      "domain": "TECH_SAAS_VENDOR",
+      "audited_for": "CLIENT",
+      "context_length": "MEDIUM",
+      "contract_title": "Auto-Renewal Lock-In with 90-Day Prior Opt-Out Window",
+      "contract_text": "CLAUSE 6: TERM AND AUTO-RENEWAL\nThis SaaS subscription automatically renews for successive 3-year terms at a 25% annual fee increase unless Client sends notarized cancellation notice exactly between 95 and 90 days before expiry.\n\nCLAUSE 7: DATA EXPORT\nUpon termination, Vendor may immediately delete all Client historical database records without providing an export window.",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "6",
+          "expected_severity": "MODERATE",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["auto-renewal", "notice"]
+        },
+        {
+          "clause_number": "7",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["data", "Cyber Security"]
+        }
+      ],
+      "expected_missing_provisions": ["IP_ASSIGNMENT", "DATA_BREACH_NOTICE"],
+      "notes": "Data lock-in / deletion without export window + predatory auto-renewal."
+    },
+    {
+      "id": "CON-PROP-001",
+      "domain": "PROPERTY_SALE_TRANSFER",
+      "audited_for": "CLIENT",
+      "context_length": "LONG",
+      "contract_title": "জমি ক্রয়-বিক্রয় চুক্তিপত্র (LSA-2026-002 - Real Bengali PDF Sample)",
+      "contract_text": "জমি ক্রয়-বিক্রয় চুক্তিপত্র\n(AGREEMENT FOR SALE OF IMMOVABLE PROPERTY)\nদলিল রেফারেন্স: LSA-2026-002\nচুক্তির তারিখ: ১২ নভেম্বর ২০২৬\nচুক্তি সম্পাদনের স্থান: সাভার, ঢাকা, বাংলাদেশ।\n\n১. চুক্তির পক্ষসমূহ\nপ্রথম পক্ষ – বিক্রেতা\nনাম: মোঃ আব্দুল করিম, পিতার নাম: মোঃ আব্দুল হাকিম, ঠিকানা: গ্রাম: রাজাশন, ডাকঘর: সাভার, উপজেলা: সাভার, জেলা: ঢাকা।\nদ্বিতীয় পক্ষ – ক্রেতা\nনাম: মোঃ সাইফুল ইসলাম, পিতার নাম: মোঃ আব্দুল জলিল, ঠিকানা: গ্রাম: আমিনবাজার, উপজেলা: সাভার, জেলা: ঢাকা।\n\n২. জমির তফসিল\nজেলা: ঢাকা, উপজেলা: সাভার, মৌজা: রাজাশন, জে.এল. নম্বর: ৪৫, সাব-রেজিস্ট্রি অফিস: সাভার, সি.এস. খতিয়ান: ১২০, এস.এ. খতিয়ান: ১৮৫, আর.এস. খতিয়ান: ৩১০, বি.এস. খতিয়ান: ৫২৫, দাগ নম্বর: ১২৩৪, জমির পরিমাণ: ১০ (দশ) শতাংশ, জমির শ্রেণি: ভিটা।\n\n৩. মালিকানার বিবরণ\nবিক্রেতার দাবি অনুযায়ী, উক্ত জমি তাঁর পিতা মোঃ আব্দুল হাকিম ১৯৯৮ সালে রেজিস্ট্রিকৃত দলিল নং ১২৫৬/১৯৯৮ মাধ্যমে ক্রয় করেন। পিতার মৃত্যুর পর বিক্রেতা উত্তরাধিকারসূত্রে জমিটির মালিকানা লাভ করেন। বিক্রেতা জানান, তাঁর আরও দুইজন ভাই ও একজন বোন রয়েছেন। তবে তাঁদের সম্মতি বা অনাপত্তিপত্র গ্রহণের প্রয়োজন নেই, কারণ জমিটি বর্তমানে তাঁর দখলে রয়েছে। বিক্রেতা আরও দাবি করেন যে, জমিটির সম্পূর্ণ মালিকানা তাঁর নিজের।\n\n৪. বিক্রয়মূল্য ও অর্থ পরিশোধ\nউক্ত ১০ শতাংশ জমির মোট বিক্রয়মূল্য ২৫,০০,০০০ (পঁচিশ লক্ষ) টাকা। ক্রেতা চুক্তি স্বাক্ষরের সময় অগ্রিম ৫,০০,০০০ টাকা, দলিল রেজিস্ট্রেশনের আগে ১৫,০০,০০০ টাকা এবং জমির দখল বুঝে নেওয়ার সময় ৫,০০,০০০ টাকা পরিশোধ করবেন। বিক্রেতা ইতোমধ্যে ৫,০০,০০০ টাকা গ্রহণ করেছেন।\n\n৫. জমির দায়-দেনা ও বন্ধক\nবিক্রেতা ঘোষণা করছেন যে জমিটি কোনো ব্যাংক বা আর্থিক প্রতিষ্ঠানের কাছে বন্ধক রাখা হয়নি। তবে জমির পূর্ববর্তী মালিকের কোনো ঋণ বা দায় থাকলে বিক্রেতা তার দায়ভার গ্রহণ করবেন না। জমির বিরুদ্ধে কোনো মামলা বা আইনি বিরোধ থাকলে ক্রেতা নিজ দায়িত্বে তা নিষ্পত্তি করবেন।\n\n৬. নামজারি ও খাজনা\nবিক্রেতা জানান যে জমিটির সর্বশেষ নামজারি তাঁর পিতা মোঃ আব্দুল হাকিমের নামে রয়েছে (খতিয়ান ৫২৫)। বিক্রেতার নামে নতুন নামজারি সম্পন্ন হয়নি। বিক্রেতা দাবি করেন, নামজারি না থাকলেও জমিটি বিক্রয়ের ক্ষেত্রে কোনো বাধা নেই।\n\n৭. জমির দখল হস্তান্তর\nদলিল রেজিস্ট্রেশনের দিন বিক্রেতা জমির দখল ক্রেতাকে বুঝিয়ে দেবেন। জমির একাংশ বর্তমানে স্থানীয় একজন ব্যক্তি ব্যবহার করছেন। ক্রেতা জমির বাস্তব দখল যাচাই না করেই চুক্তিতে সম্মত হয়েছেন।\n\n৮. পূর্ববর্তী বিক্রয় ও তৃতীয় পক্ষের অধিকার\nজমির একটি অংশ নিয়ে পূর্বে অন্য একজন ব্যক্তির সঙ্গে মৌখিক বায়না চুক্তি হয়েছিল। এ বিষয়ে কোনো লিখিত বাতিল চুক্তি বা অনাপত্তিপত্র সংযুক্ত করা হয়নি।\n\n৯. দলিল রেজিস্ট্রেশন\nউভয় পক্ষ আগামী ৩০ দিনের মধ্যে সাফ কবলা দলিল রেজিস্ট্রেশন সম্পন্ন করবেন। বিক্রেতা নির্ধারিত সময়ে রেজিস্ট্রেশন করতে ব্যর্থ হলে ক্রেতা অগ্রিম অর্থ ফেরত পাবেন। তবে অতিরিক্ত ক্ষতিপূরণ বা জরিমানার বিষয়ে কোনো শর্ত নির্ধারণ করা হয়নি।\n\n১০. বিক্রেতার ঘোষণা ও নিশ্চয়তা\nতবে উপরোক্ত ঘোষণাগুলোর পক্ষে কোনো স্বাধীন মালিকানা অনুসন্ধান প্রতিবেদন বা আইনজীবীর Title Search Report সংযুক্ত করা হয়নি।\n\n১১. চুক্তি বাতিল\nক্রেতা কোনো কারণে জমি কিনতে অস্বীকৃতি জানালে বিক্রেতা অগ্রিম অর্থের ৫০% বাজেয়াপ্ত করতে পারবেন। বিক্রেতা জমি বিক্রি করতে অস্বীকৃতি জানালে ক্রেতাকে কেবল অগ্রিম অর্থ ফেরত দেওয়া হবে। কোনো পক্ষই অতিরিক্ত ক্ষতিপূরণ দাবি করতে পারবেন না।\n\n১২. বিরোধ নিষ্পত্তি\nআলোচনায় সমাধান না হলে উভয় পক্ষের সম্মতিতে সালিশের মাধ্যমে ঢাকায় বিরোধ নিষ্পত্তি করা হবে।\n\n১৩. প্রযোজ্য আইন\nTransfer of Property Act, 1882; Registration Act, 1908; Contract Act, 1872; State Acquisition and Tenancy Act, 1950; Specific Relief Act, 1877।",
+      "playbook_rules": [],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "3",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "REGULATORY_NON_COMPLIANT",
+          "expected_law_keywords": ["Transfer of Property", "55", "Muslim", "co-heir", "inheritance"]
+        },
+        {
+          "clause_number": "5",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["Transfer of Property", "55", "encumbrance"]
+        },
+        {
+          "clause_number": "11",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "STATUTORILY_RESTRICTED",
+          "expected_law_keywords": ["74", "Contract Act", "Specific Relief"]
+        }
+      ],
+      "expected_missing_provisions": [],
+      "notes": "Real 5-page Bengali Land Sale Agreement (LSA-2026-002): missing co-heir NOC (2 brothers + 1 sister), no seller mutation, buyer absorbs prior debt/litigation, third-party possession, prior verbal baina with no cancellation, 50% advance forfeiture."
+    },
+    {
+      "id": "CON-TECH-010",
+      "domain": "TECH_SAAS_VENDOR",
+      "audited_for": "CLIENT",
+      "context_length": "LONG",
+      "contract_title": "Software Development & Technology Service Agreement (SDA-2026-011 + Nexora Playbook NEX-CP-001)",
+      "contract_text": "SOFTWARE DEVELOPMENT & TECHNOLOGY SERVICE AGREEMENT\nAgreement Reference: SDA-2026-011\nDate of Execution: 12 November 2026\nPlace of Execution: Dhaka, Bangladesh\n\n1. PARTIES TO THE AGREEMENT\nParty A – Client: Nexora Digital Solutions Ltd., House 45, Road 12, Banani, Dhaka-1213, Bangladesh (Authorized Representative: Mr. Rahman Ahmed, Managing Director).\nParty B – Service Provider: ByteCraft Technologies Ltd., Level 6, Sector 7, Uttara, Dhaka-1230, Bangladesh (Authorized Representative: Mr. Tanvir Hasan, Chief Executive Officer).\n\n2. PURPOSE AND SCOPE OF SERVICES\nThe Service Provider agrees to design, develop, deploy, and maintain a cloud-based Enterprise Resource Management (ERP) software platform for the Client. Any additional functionality requested by the Client shall be considered part of the original scope unless otherwise agreed in writing.\n\n3. CONTRACT VALUE AND PAYMENT TERMS\nThe total contract value shall be BDT 12,00,000 (Twelve Lakh Bangladeshi Taka). The Client agrees to make payments according to the following schedule: 40% advance payment upon signing this Agreement; 30% upon completion of the development phase; 30% upon final delivery of the software. The Service Provider shall be entitled to demand additional payments for unexpected technical requirements. All payments must be completed within 15 business days of receiving an invoice. In case of delayed payment, the Client shall pay a late payment charge of 5% per day on the outstanding amount. The Service Provider may suspend services immediately if payment is delayed by more than 7 days.\n\n4. PROJECT TIMELINE AND DELIVERY\nThe project shall commence on 15 November 2026 and be completed within 90 calendar days. Any delay caused by the Client shall automatically extend the delivery deadline. However, the Service Provider shall remain responsible for delivering the project within the originally agreed timeline. The Service Provider may change the delivery schedule without obtaining prior written approval from the Client.\n\n5. INTELLECTUAL PROPERTY RIGHTS\nAll software code, source files, databases, documentation, designs created under this Agreement shall belong exclusively to the Client immediately upon commencement of the project. The Client shall not be required to make the final payment before obtaining complete ownership of the software. The Service Provider may reuse any part of the developed software for other commercial clients without obtaining prior written permission from the Client.\n\n6. CONFIDENTIALITY\nBoth parties agree to maintain confidentiality of business, financial, technical, customer, and credential information. Neither party shall disclose confidential information to any third party without prior written consent. This obligation shall remain valid for a period of two years following termination of this Agreement. The Service Provider shall not be responsible for unauthorized disclosure of information caused by its employees, subcontractors, or third-party service providers.\n\n7. DATA PROTECTION AND SECURITY\nThe Service Provider shall implement reasonable security measures to protect the Client's data. The Service Provider may store, process, transfer, or share Client data with third-party hosting providers and external vendors whenever technically necessary. The Service Provider shall not be required to notify the Client immediately in the event of a data breach unless the Client specifically requests such notification. The Service Provider shall not be liable for any data loss resulting from third-party cloud infrastructure failures.\n\n8. WARRANTIES AND MAINTENANCE\nThe Service Provider warrants that the delivered software will substantially comply with agreed technical specifications. A 30-day maintenance period shall begin after the initial deployment to correct defects without additional charges. Any modifications, performance improvements, security updates, or compatibility changes shall be considered additional paid services. The Service Provider does not guarantee uninterrupted availability or error-free operation.\n\n9. LIMITATION OF LIABILITY\nThe Service Provider's total liability under this Agreement shall not exceed BDT 50,000 under any circumstances. Neither party shall be responsible for indirect, incidental, special, or consequential damages. However, the Service Provider shall be responsible for all direct and indirect financial losses resulting from its negligence, misconduct, or failure to perform contractual obligations.\n\n10. INDEMNIFICATION\nThe Service Provider agrees to indemnify the Client against all claims, damages, losses, expenses, and liabilities arising from development and delivery of the software. The Client shall also indemnify the Service Provider against third-party claims relating to the Client's business operations. Neither party shall be required to provide evidence of actual loss before seeking indemnification.\n\n11. TERMINATION\nEither party may terminate this Agreement by providing 15 days' written notice. The Client may terminate immediately if the Service Provider fails to meet any contractual obligation. The Service Provider may terminate immediately without prior notice if the Client delays any payment. Upon termination, the Service Provider shall retain all advance payments received, regardless of the amount of work completed. Service Provider shall transfer completed project files within 90 days after termination.\n\n12. FORCE MAJEURE\nNeither party shall be held responsible for delays caused by circumstances beyond reasonable control, including natural disasters, political instability, internet outages, cyberattacks, or government restrictions. No party shall be entitled to terminate this Agreement due to a force majeure event.\n\n13. DISPUTE RESOLUTION\nIf mutual negotiation fails within 30 days, the dispute shall be referred to final and binding arbitration. The arbitration venue shall be determined by the Service Provider.\n\n14. GOVERNING LAW\nThis Agreement shall be governed by the laws of Bangladesh; the courts of Dhaka shall have exclusive jurisdiction over all disputes arising under this Agreement.\n\n15. AMENDMENTS\nAn amendment shall become effective upon approval by either party's authorized representative. Email communications between the parties may also be treated as legally binding amendments.\n\n16. ENTIRE AGREEMENT\nThis Agreement constitutes the entire understanding between the parties and supersedes previous verbal or written agreements. Invalidity of one provision shall not affect remaining provisions.\n\n17. SIGNATURES\nExecuted by authorized representatives of Nexora Digital Solutions Ltd. (Mr. Rahman Ahmed) and ByteCraft Technologies Ltd. (Mr. Tanvir Hasan), with two witnesses.",
+      "playbook_rules": [
+        {
+          "rule_id": "RULE-CP-002",
+          "category": "Scope & Deliverables",
+          "rule_description": "Nexora Playbook NEX-CP-001 Rule CP-002: Contracts must clearly define scope, deliverables, deadlines, acceptance criteria, and change-request procedures. Undefined or unlimited service obligations are unacceptable without specific Legal approval.",
+          "severity": "HIGH",
+          "suggested_redline": "Define formal UAT acceptance criteria (15 business days) and written mutually signed Change Order procedure for any out-of-scope requests."
+        },
+        {
+          "rule_id": "RULE-CP-003",
+          "category": "Payment",
+          "rule_description": "Nexora Playbook NEX-CP-001 Rule CP-003: Preferred payment structure is 30% advance, 40% upon milestone completion, and 30% after final acceptance (alternative schedules require Finance approval). Contracts must clearly define taxes, refunds, and reasonable late-payment conditions.",
+          "severity": "HIGH",
+          "suggested_redline": "Milestone payment schedule: 30% advance, 40% upon milestone completion, and 30% after written final acceptance; late fee capped at 1% per month."
+        },
+        {
+          "rule_id": "RULE-CP-005",
+          "category": "Termination",
+          "rule_description": "Nexora Playbook NEX-CP-001 Rule CP-005: Contracts must provide clear termination rights, 15-30 days preferred cure period for remediable breaches, and must address outstanding payments, refunds of unearned advances, completed work, and return of company property.",
+          "severity": "HIGH",
+          "suggested_redline": "Provide a 15-30 day written cure period before termination for payment delay, and require pro-rata refund of unearned advance payments upon termination."
+        },
+        {
+          "rule_id": "RULE-CP-006",
+          "category": "Liability",
+          "rule_description": "Nexora Playbook NEX-CP-001 Rule CP-006: Preferred aggregate liability cap is the total contract value (BDT 12,00,000), and clauses must consistently define direct/indirect losses, IP infringement, confidentiality breaches, and data security incidents.",
+          "severity": "HIGH",
+          "suggested_redline": "Set Service Provider aggregate liability cap to 100% of total contract value (BDT 12,00,000), with uncapped liability for gross negligence, IP infringement, or confidentiality/data breaches."
+        },
+        {
+          "rule_id": "RULE-CP-007",
+          "category": "Confidentiality & Data Protection",
+          "rule_description": "Nexora Playbook NEX-CP-001 Rule CP-007: Preferred confidentiality survival is 3 years after termination. Contracts must mandate security obligations, breach incident reporting, return/deletion of data, subcontractor accountability, and Legal + Security review for personal data sharing.",
+          "severity": "HIGH",
+          "suggested_redline": "Extend confidentiality survival to 3 years post-termination, hold Service Provider liable for personnel/subcontractor breaches, mandate 48-hour breach notification, and require prior written approval for third-party data sharing."
+        },
+        {
+          "rule_id": "RULE-CP-008",
+          "category": "Intellectual Property",
+          "rule_description": "Nexora Playbook NEX-CP-001 Rule CP-008: Software contracts must define newly created IP, pre-existing IP, source code delivery, third-party/open-source dependencies, and commercial reuse permissions. Nexora requires exclusive ownership of commissioned deliverables without unapproved vendor commercial reuse.",
+          "severity": "HIGH",
+          "suggested_redline": "Assign exclusive IP of commissioned deliverables (including source code) to Client upon milestone/final payment and prohibit commercial reuse of Client-specific deliverables without prior written Legal approval."
+        },
+        {
+          "rule_id": "RULE-CP-009",
+          "category": "Warranties & Service Quality",
+          "rule_description": "Nexora Playbook NEX-CP-001 Rule CP-009: Preferred software defect correction/warranty period is 60 days after final acceptance (exceptions require departmental and Legal approval).",
+          "severity": "MODERATE",
+          "suggested_redline": "Extend free defect correction warranty period to 60 days after written final acceptance."
+        },
+        {
+          "rule_id": "RULE-CP-011",
+          "category": "Assignment & Subcontracting",
+          "rule_description": "Nexora Playbook NEX-CP-001 Rule CP-011: Material assignment or subcontracting requires prior written company approval and must preserve confidentiality, security, quality, and accountability.",
+          "severity": "MODERATE",
+          "suggested_redline": "Require prior written Client consent for any subcontracting and maintain full prime-contractor liability for sub-processor actions."
+        },
+        {
+          "rule_id": "RULE-CP-012",
+          "category": "Tax & Financial Compliance",
+          "rule_description": "Nexora Playbook NEX-CP-001 Rule CP-012: Contracts must explicitly allocate responsibility for applicable taxes, VAT, withholding (AIT), invoicing, and financial documentation.",
+          "severity": "MODERATE",
+          "suggested_redline": "Add explicit VAT, AIT/tax withholding, and Mushak-compliant invoicing clause."
+        },
+        {
+          "rule_id": "RULE-CP-013",
+          "category": "Governing Law & Dispute Resolution",
+          "rule_description": "Nexora Playbook NEX-CP-001 Rule CP-013: Preferred governing law is Bangladesh law with balanced dispute negotiation, formal notice, and fair arbitration/court venue without waiving mandatory statutory rights.",
+          "severity": "MODERATE",
+          "suggested_redline": "Seat arbitration mutually in Dhaka under the Arbitration Act, 2001 rather than unilateral Service Provider venue selection."
+        }
+      ],
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "3",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "STATUTORILY_RESTRICTED",
+          "expected_law_keywords": ["74", "Contract Act", "RULE-CP-003"]
+        },
+        {
+          "clause_number": "5",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["Copyright", "RULE-CP-008"]
+        },
+        {
+          "clause_number": "6",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["RULE-CP-007", "Confidentiality"]
+        },
+        {
+          "clause_number": "7",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "REGULATORY_NON_COMPLIANT",
+          "expected_law_keywords": ["Cyber Security", "RULE-CP-007"]
+        },
+        {
+          "clause_number": "8",
+          "expected_severity": "MODERATE",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["RULE-CP-009", "60 days"]
+        },
+        {
+          "clause_number": "9",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "COMMERCIAL_ISSUE",
+          "expected_law_keywords": ["RULE-CP-006", "50,000"]
+        },
+        {
+          "clause_number": "11",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "STATUTORILY_RESTRICTED",
+          "expected_law_keywords": ["64", "65", "Contract Act", "RULE-CP-005"]
+        }
+      ],
+      "expected_missing_provisions": ["THIRD_PARTY_OSS_WARRANTY", "ACCEPTANCE_TESTING_CRITERIA"],
+      "notes": "Real 5-page English Software Agreement (SDA-2026-011) audited against both Bangladesh Law and the real Nexora Corporate Contract Governance Playbook (NEX-CP-001)."
+    }
+  ]
+}
