@@ -20,7 +20,8 @@ from app.core.pricing import (
     get_lawyer_verification_split,
 )
 from app.models.user import (
-    User, UserRole, CreditTransaction, CreditTxType,
+    User, UserRole, CompanyRole, MemberApprovalStatus,
+    CreditTransaction, CreditTxType,
     WithdrawalRequest, WithdrawalStatus,
 )
 from app.models.lawyer import LawyerProfile, LawyerStatus
