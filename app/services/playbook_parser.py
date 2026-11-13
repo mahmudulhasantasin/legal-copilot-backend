@@ -21,6 +21,24 @@ def _clean_llm_json(content: str) -> str:
     return cleaned.strip()
 
 
+def _response_to_text(response: Any) -> str:
+    """
+    Extracts plain text from an LLM response. Newer langchain-google-genai
+    versions return `content` as a list of typed blocks
+    ([{'type': 'text', 'text': ...}]) — stringifying that directly produces
+    an unparseable repr instead of JSON, which silently yielded 0 rules.
+    """
+    content = getattr(response, "content", None)
+    if content is None:
+        content = str(response)
+    if isinstance(content, list):
+        return "".join(
+            item.get("text", "") if isinstance(item, dict) else str(item)
+            for item in content
+        ).strip()
+    return str(content).strip()
+
+
 async def extract_playbook_text(filename: str, content: bytes) -> str:
     """
     Reuses ingestion.py logic to parse text from digital/scanned PDFs, DOCX, and text files.
@@ -72,7 +90,7 @@ Rules:
     truncated_text = raw_text[:25000]
     response = await chain.ainvoke({"text": truncated_text})
 
-    cleaned_json = _clean_llm_json(str(response.content))
+    cleaned_json = _clean_llm_json(_response_to_text(response))
     try:
         rules = json.loads(cleaned_json)
         if isinstance(rules, list):
