@@ -33,16 +33,6 @@ class Settings(BaseSettings):
     GOOGLE_APPLICATION_CREDENTIALS: str = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
 
-    # Optional Colab / OpenAI-compatible Local LLM Override (inactive when COLAB_LLM_BASE_URL is empty)
-    COLAB_LLM_BASE_URL: str = os.getenv("COLAB_LLM_BASE_URL", "")
-    COLAB_LLM_MODEL: str = os.getenv("COLAB_LLM_MODEL", "gemma4:e4b")
-    COLAB_LLM_API_KEY: str = os.getenv("COLAB_LLM_API_KEY", "colab-local")
-    COLAB_LLM_TIMEOUT: float = float(os.getenv("COLAB_LLM_TIMEOUT", "120"))
-    COLAB_LLM_MAX_TOKENS: int = int(os.getenv("COLAB_LLM_MAX_TOKENS", "3000"))
-    COLAB_LLM_FALLBACK: bool = os.getenv("COLAB_LLM_FALLBACK", "false").strip().lower() in (
-        "1", "true", "yes", "on"
-    )
-
     # ✅ Tavily API Key (নতুন যুক্ত করা হলো)
     TAVILY_API_KEY: Optional[str] = os.getenv("TAVILY_API_KEY", None)
 
@@ -94,9 +84,3 @@ FRONTEND_URL = settings.FRONTEND_URL
 # ✅ Tavily Direct Export (প্রয়োজন হলে)
 TAVILY_API_KEY = settings.TAVILY_API_KEY
 MCP_SERVER_URL = settings.MCP_SERVER_URL
-COLAB_LLM_BASE_URL = settings.COLAB_LLM_BASE_URL
-COLAB_LLM_MODEL = settings.COLAB_LLM_MODEL
-COLAB_LLM_API_KEY = settings.COLAB_LLM_API_KEY
-COLAB_LLM_TIMEOUT = settings.COLAB_LLM_TIMEOUT
-COLAB_LLM_MAX_TOKENS = settings.COLAB_LLM_MAX_TOKENS
-COLAB_LLM_FALLBACK = settings.COLAB_LLM_FALLBACK
