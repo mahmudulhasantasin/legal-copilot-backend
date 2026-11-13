@@ -125,7 +125,7 @@ class CitationVerifier:
             sec_num = str(sec.get("section", ""))
             
             # Clean up section number just in case LLM outputs "Section 73" instead of "73"
-            sec_num_clean = re.sub(r'(section|sec\.?|ধারা|[\{\}\[\]\(\)])', '', sec_num, flags=re.IGNORECASE).strip()
+            sec_num_clean = re.sub(r'(section|sec\.?|article|art\.?|ধারা|অনুচ্ছেদ|[\{\}\[\]\(\)])', '', sec_num, flags=re.IGNORECASE).strip()
 
             if not sec_num_clean:
                 continue
