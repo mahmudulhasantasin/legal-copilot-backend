@@ -370,15 +370,19 @@ DOMAIN_MANDATORY_PROVISIONS: Dict[str, List[Dict[str, Any]]] = {
 #   "1. DEFINITIONS", "1) Definitions", "১। পক্ষসমূহ", "ধারা ৪: চুক্তি মূল্য", "অনুচ্ছেদ ২ - ..."
 _EXPLICIT_HEADER_RE = re.compile(
     r"^\s*(?:#{1,4}\s*)?"
-    r"(?:Clause|Section|Article|Schedule|Part|ধারা|উপধারা|অনুচ্ছেদ|দফা|শর্ত|শর্তাবলি)\s*"
-    r"([0-9০-৯]{1,3}(?:\.[0-9০-৯]{1,2})?|[IVXLCDM]+)"
-    r"\s*[\.\:\-\)\।]?\s*(.*)$",
+    r"(?:(?:Clause|Section|Article|Schedule|Part|ধারা|উপধারা|অনুচ্ছেদ|দফা|শর্ত|শর্তাবলি)\s*(?:নং|নম্বর)?\s*([0-9০-৯]{1,3}(?:\.[0-9০-৯]{1,2})?|[IVXLCDM]+)|([0-9০-৯]{1,3}(?:ম|য়|য়|র্থ|ষ্ঠ|তম)?)\s*(?:দফা|ধারা|শর্ত|অনুচ্ছেদ))\s*[\.\:\-\)\।]?\s*(.*)$",
     re.IGNORECASE,
 )
 
 # Matches bare numbered headers like "1. PARTIES", "12) GOVERNING LAW", "১। পরিচয়", "২. শর্তাবলি"
 _NUMBERED_HEADER_RE = re.compile(
     r"^\s*([0-9০-৯]{1,3}|[IVXLCDM]+)\s*[\.\)\।]\s+(.+)$"
+)
+
+# Matches document reference / page number footers that must not be treated as clause text
+_FOOTER_NOISE_RE = re.compile(
+    r"^\s*(?:দলিল\s*রেফারেন্স|Deed\s*Ref|পৃষ্ঠা\s*[০-৯0-9]+|Page\s*\d+)[\s\S]*$",
+    re.IGNORECASE
 )
 
 # Matches Word auto-numbered headings that duplicate the section number as a prefix,
@@ -439,6 +443,10 @@ def extract_clauses_from_text(raw_text: str) -> List[Dict[str, Any]]:
                 current_lines.append("")
             continue
 
+        # Ignore page footers, deed reference stamps, and page counters
+        if _FOOTER_NOISE_RE.match(stripped):
+            continue
+
         header_match = _EXPLICIT_HEADER_RE.match(stripped)
         autonum_match = None if header_match else _AUTONUM_HEADER_RE.match(stripped)
         num_match = None if (header_match or autonum_match) else _NUMBERED_HEADER_RE.match(stripped)
@@ -450,8 +458,8 @@ def extract_clauses_from_text(raw_text: str) -> List[Dict[str, Any]]:
         rest_text = ""
 
         if header_match:
-            num_token = header_match.group(1).strip()
-            rest_text = header_match.group(2).strip()
+            num_token = (header_match.group(1) or header_match.group(2) or "").strip()
+            rest_text = (header_match.group(3) or "").strip()
             # Top-level clause if no dot, or if top-level hasn't started yet
             if "." not in _normalize_digits(num_token) or current_number is None:
                 is_new_clause = True
