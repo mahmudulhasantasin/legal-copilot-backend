@@ -1,7 +1,7 @@
 import json
 import re
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from langchain_core.prompts import ChatPromptTemplate
 
 # ✅ FIX 1: Remove direct ChatGoogleGenerativeAI and settings import
@@ -18,6 +18,153 @@ logger = logging.getLogger(__name__)
 _MAX_PLAYBOOK_RULES = 40
 _MAX_UNCOVERED_AREAS = 4
 _MAX_SOURCE_TEXT_CHARS = 25000
+
+# ── Post-extraction verification (Layer 1) ──────────────────────────────────
+# Extraction quality guard: LLM paraphrase can silently drop or invent critical
+# numbers ("advance must not exceed 30%" → "advance should be reasonable") or
+# semantically drift from the source. Two complementary checks flag suspicious
+# rules for admin review instead of trusting the extraction blindly:
+#   1a. Deterministic critical-term check — every number/amount/duration cited in
+#       a rule MUST appear verbatim (normalized) in the source playbook text.
+#   1b. Local embedding similarity — rule vs source chunk cosine (fastembed e5,
+#       no API call) catches paraphrase drift that string matching cannot.
+# Rules are enriched with needs_review / review_reasons / source_similarity so
+# the frontend can run an approve-edit-delete pass before relying on them.
+# Calibrated on faithful-paraphrase (0.54-0.62) vs semantic-drift (0.42) cases:
+# 0.50 sits between them; layer 1a catches invented numbers even when similarity passes.
+_REVIEW_SIMILARITY_THRESHOLD = 0.50
+_CHUNK_CHARS = 350    # sentence-scale units sharpen the peak similarity — a rule
+_CHUNK_OVERLAP = 80   # matches its own policy sentence, not a mixed-topic blob
+
+_WORD_NUMBERS = {
+    "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6",
+    "seven": "7", "eight": "8", "nine": "9", "ten": "10", "eleven": "11",
+    "twelve": "12", "thirteen": "13", "fourteen": "14", "fifteen": "15",
+    "sixteen": "16", "seventeen": "17", "eighteen": "18", "nineteen": "19",
+    "twenty": "20", "thirty": "30", "forty": "40", "fifty": "50", "sixty": "60",
+    "seventy": "70", "eighty": "80", "ninety": "90", "hundred": "100",
+}
+_BN_DIGITS = str.maketrans("০১২৩৪৫৬৭৮৯", "0123456789")
+
+
+def _normalize_for_term_match(text: str) -> str:
+    """Lowercase, word-numbers → digits, strip commas/parens, collapse spaces so
+    'thirty (30) calendar days' and '30 days' normalize identically."""
+    s = (text or "").lower().translate(_BN_DIGITS)
+    s = re.sub(r"\b(" + "|".join(_WORD_NUMBERS) + r")\b", lambda m: _WORD_NUMBERS[m.group(1)], s)
+    s = re.sub(r"[,\(\)\[\]]", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+_CRITICAL_TERM_RES = [
+    re.compile(r"\d[\d.]*(?:\.\d+)?\s*%"),                                        # 30%, 12.5 %
+    re.compile(r"(?:bdt|tk|taka|৳)\s*\d[\d.]*(?:\.\d+)?"),                        # BDT 300,000 / Tk 50000
+    re.compile(r"\d[\d.]*(?:\.\d+)?\s*(?:lakh|lakhs|crore|crores|কোটি|লক্ষ)"),    # 5 lakh
+    re.compile(r"\d[\d.]*(?:\.\d+)?\s*(?:calendar\s+|working\s+|business\s+)?(?:days?|months?|weeks?|years?)"),  # 30 days, 12 months
+]
+
+
+def _critical_term_violations(rule: Dict[str, Any], normalized_source: str) -> List[str]:
+    """Critical terms cited in a rule that do NOT appear in the source playbook."""
+    haystack = f"{rule.get('rule_description', '')} {rule.get('suggested_redline', '')}"
+    norm_hay = _normalize_for_term_match(haystack)
+    tokens = set()
+    for regex in _CRITICAL_TERM_RES:
+        for match in regex.findall(norm_hay):
+            tokens.add(re.sub(r"\s+", " ", match).strip())
+    return sorted(t for t in tokens if t not in normalized_source)
+
+
+# Local embedder (lazy singleton — heavy model, upload-only path). Uses fastembed's
+# paraphrase-multilingual MiniLM: multilingual (EN+BN playbooks), tuned exactly for
+# paraphrase/similarity scoring, and requires no e5 query/passage prefixes.
+_EMBEDDER: Any = None
+_EMBED_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+
+
+def _get_embedder() -> Any:
+    global _EMBEDDER
+    if _EMBEDDER is None:
+        from fastembed import TextEmbedding  # lazy: heavy import, upload-only path
+        _EMBEDDER = TextEmbedding(model_name=_EMBED_MODEL)
+    return _EMBEDDER
+
+
+def _chunk_text(text: str, size: int, overlap: int) -> List[str]:
+    chunks: List[str] = []
+    start = 0
+    while start < len(text):
+        chunks.append(text[start:start + size])
+        start += size - overlap
+    return [c for c in chunks if c.strip()]
+
+
+def _max_cosine_similarity(query_vec: List[float], chunk_vecs: List[Any]) -> float:
+    import numpy as np
+    q = np.asarray(query_vec, dtype=float)
+    if not len(q) or not len(chunk_vecs):
+        return 0.0
+    best = 0.0
+    for cv in chunk_vecs:
+        v = np.asarray(cv, dtype=float)
+        denom = float(np.linalg.norm(q) * np.linalg.norm(v))
+        if denom > 0:
+            best = max(best, float(np.dot(q, v) / denom))
+    return best
+
+
+def _verify_rules_against_source(rules: List[Dict[str, Any]], raw_text: str) -> List[Dict[str, Any]]:
+    """
+    Enriches each rule with review metadata (guarded — on any internal failure the
+    rules are returned unflagged so upload never breaks):
+      - source_similarity: best cosine similarity vs source chunks (empty if N/A)
+      - needs_review + review_reasons: critical-term violations and/or low similarity
+    """
+    if not rules:
+        return rules
+
+    normalized_source = _normalize_for_term_match(raw_text[:_MAX_SOURCE_TEXT_CHARS])
+
+    chunk_vecs: List[Any] = []
+    try:
+        embedder = _get_embedder()
+        # Embed RAW source chunks — punctuation/structure materially improve
+        # similarity quality; _normalize_for_term_match is only for layer 1a.
+        chunks = _chunk_text(raw_text[:_MAX_SOURCE_TEXT_CHARS], _CHUNK_CHARS, _CHUNK_OVERLAP)
+        if chunks:
+            chunk_vecs = list(embedder.embed(chunks))
+    except Exception as exc:
+        logger.warning("[playbook_parser] Embedding similarity unavailable (skipping layer 1b): %s", exc)
+
+    for rule in rules:
+        reasons: List[str] = []
+        violations = _critical_term_violations(rule, normalized_source)
+        for tok in violations:
+            reasons.append(f"Critical term '{tok}' cited in the rule was not found in the source playbook text.")
+
+        similarity: Optional[float] = None
+        if chunk_vecs:
+            rule_text = f"{rule.get('rule_description', '')} {rule.get('suggested_redline', '')}".strip()
+            if rule_text:
+                try:
+                    rule_vec = next(iter(embedder.embed([rule_text])))
+                    similarity = round(_max_cosine_similarity(rule_vec, chunk_vecs), 3)
+                except Exception as exc:
+                    logger.warning("[playbook_parser] Rule embedding failed: %s", exc)
+            if similarity is not None:
+                rule["source_similarity"] = similarity
+                if similarity < _REVIEW_SIMILARITY_THRESHOLD:
+                    reasons.append(
+                        f"Low textual similarity to the source playbook ({similarity:.2f} < "
+                        f"{_REVIEW_SIMILARITY_THRESHOLD}). The rule may be paraphrased, invented, or misplaced."
+                    )
+
+        rule["needs_review"] = bool(reasons)
+        rule["review_reasons"] = reasons
+
+    flagged = sum(1 for r in rules if r.get("needs_review"))
+    logger.info("[playbook_parser] Verification: %d/%d rule(s) flagged for admin review.", flagged, len(rules))
+    return rules
 
 _EXTRACT_SYSTEM = """You are a Legal Policy Engineer. Analyze the internal corporate policy/playbook document provided.
 Extract all explicit contract rules, operational policies, liability caps, governing laws, and payment guidelines.
@@ -220,4 +367,12 @@ async def parse_playbook_to_rules(raw_text: str) -> List[Dict[str, Any]]:
     except Exception as exc:
         logger.warning("[playbook_parser] Coverage recovery failed (keeping stage-1 rules): %s", exc)
 
-    return _assign_rule_ids(rules, set())[:_MAX_PLAYBOOK_RULES]
+    rules = _assign_rule_ids(rules, set())[:_MAX_PLAYBOOK_RULES]
+
+    # Layer 1: deterministic + embedding verification against the source text
+    try:
+        rules = _verify_rules_against_source(rules, raw_text)
+    except Exception as exc:
+        logger.warning("[playbook_parser] Rule verification failed (returning unflagged rules): %s", exc)
+
+    return rules

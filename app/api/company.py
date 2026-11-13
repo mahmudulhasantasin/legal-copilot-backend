@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, BackgroundTasks
 from pydantic import BaseModel, Field
@@ -723,7 +723,66 @@ async def upload_company_playbook(
         "playbook_id": playbook.id,
         "title": playbook.title,
         "rules_extracted_count": len(rules),
+        "needs_review_count": sum(1 for r in rules if r.get("needs_review")),
         "rules": rules,
+    }
+
+
+class UpdatePlaybookRulesRequest(BaseModel):
+    rules: List[Dict]
+
+
+@router.put("/playbooks/{playbook_id}/rules")
+async def update_playbook_rules(
+    playbook_id: int,
+    body: UpdatePlaybookRulesRequest,
+    ent: Enterprise = Depends(get_admin_enterprise),
+    admin: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Admin review pass on extracted rules: edit rule text, fix severities, clear
+    review flags, or delete rules after checking the parser's needs_review flags.
+    Replaces rules_json wholesale and deactivates any rule still flagged.
+    """
+    pb = await db.scalar(
+        select(CompanyPlaybook).where(
+            CompanyPlaybook.id == playbook_id,
+            CompanyPlaybook.enterprise_id == ent.id,
+        )
+    )
+    if not pb:
+        raise HTTPException(404, "Playbook not found.")
+
+    cleaned_rules = []
+    seen_ids = set()
+    for rule in body.rules or []:
+        if not isinstance(rule, dict) or not str(rule.get("rule_description", "")).strip():
+            raise HTTPException(400, "Every rule must be an object with a non-empty rule_description.")
+        rid = str(rule.get("rule_id") or "").strip()
+        if rid and rid in seen_ids:
+            raise HTTPException(400, f"Duplicate rule_id '{rid}' in the submitted rules.")
+        if rid:
+            seen_ids.add(rid)
+        cleaned_rules.append(rule)
+
+    pb.rules_json = cleaned_rules
+    await db.flush()
+
+    await _log_company_action(
+        db, admin, AuditAction.ENTERPRISE_APPROVED,
+        target_entity="company_playbook", target_id=pb.id,
+        description=f"Admin reviewed rules for playbook '{pb.title}' ({len(cleaned_rules)} rules)",
+    )
+    await db.commit()
+    await db.refresh(pb)
+
+    return {
+        "status": "success",
+        "playbook_id": pb.id,
+        "rules_count": len(pb.rules_json or []),
+        "needs_review_count": sum(1 for r in (pb.rules_json or []) if r.get("needs_review")),
+        "rules": pb.rules_json or [],
     }
 
 
