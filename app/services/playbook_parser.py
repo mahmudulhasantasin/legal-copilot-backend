@@ -1,5 +1,7 @@
+import os
 import json
 import re
+import asyncio
 import logging
 from typing import List, Dict, Any, Optional
 from langchain_core.prompts import ChatPromptTemplate
@@ -30,11 +32,6 @@ _MAX_SOURCE_TEXT_CHARS = 25000
 #       no API call) catches paraphrase drift that string matching cannot.
 # Rules are enriched with needs_review / review_reasons / source_similarity so
 # the frontend can run an approve-edit-delete pass before relying on them.
-# Calibrated on faithful-paraphrase (0.54-0.62) vs semantic-drift (0.42) cases:
-# 0.50 sits between them; layer 1a catches invented numbers even when similarity passes.
-_REVIEW_SIMILARITY_THRESHOLD = 0.50
-_CHUNK_CHARS = 350    # sentence-scale units sharpen the peak similarity — a rule
-_CHUNK_OVERLAP = 80   # matches its own policy sentence, not a mixed-topic blob
 
 _WORD_NUMBERS = {
     "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6",
@@ -75,89 +72,166 @@ def _critical_term_violations(rule: Dict[str, Any], normalized_source: str) -> L
     return sorted(t for t in tokens if t not in normalized_source)
 
 
-# Local embedder (lazy singleton — heavy model, upload-only path). Uses fastembed's
-# paraphrase-multilingual MiniLM: multilingual (EN+BN playbooks), tuned exactly for
-# paraphrase/similarity scoring, and requires no e5 query/passage prefixes.
-_EMBEDDER: Any = None
-_EMBED_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+# Layer 1b runs on the EXISTING Qdrant Cloud connection via server-side inference
+# (the same intfloat/multilingual-e5-small the laws collection uses — proven
+# supported). Rationale (Render free tier): a local ONNX embedder (fastembed) risks
+# OOM on 512MB instances and re-downloads its model on every restart (ephemeral
+# disk). Instead a tiny temp collection is created per upload, chunks are upserted
+# and rules queried with cloud-side embedding, and the collection is ALWAYS deleted.
+# Set PLAYBOOK_SIMILARITY_CHECK=0 to disable (layer 1a still runs).
+_SIMILARITY_E5_MODEL = "intfloat/multilingual-e5-small"
+_E5_VECTOR_SIZE = 384
+
+# Adaptive flagging: a rule is an outlier when its similarity drops this much
+# below its own playbook's median score. Floor guards tiny rule sets.
+_REVIEW_OUTLIER_MARGIN = 0.04
+_ABSOLUTE_SIMILARITY_FLOOR = 0.80
+_CHUNK_MAX_CHARS = 500   # max window for unbroken (no-newline) paragraphs
 
 
-def _get_embedder() -> Any:
-    global _EMBEDDER
-    if _EMBEDDER is None:
-        from fastembed import TextEmbedding  # lazy: heavy import, upload-only path
-        _EMBEDDER = TextEmbedding(model_name=_EMBED_MODEL)
-    return _EMBEDDER
+def _similarity_check_enabled() -> bool:
+    return os.environ.get("PLAYBOOK_SIMILARITY_CHECK", "1").strip().lower() not in ("0", "false", "no")
 
 
-def _chunk_text(text: str, size: int, overlap: int) -> List[str]:
+def _chunk_text(text: str, max_chars: int = _CHUNK_MAX_CHARS) -> List[str]:
+    """Dual-granularity chunks: every source line (rules citing one policy line
+    match sharply) PLUS ~max_chars merged line groups (rules summarizing several
+    adjacent policies match the combined context). Long unbroken lines split at
+    max_chars."""
+    lines: List[str] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        while len(line) > max_chars:
+            lines.append(line[:max_chars])
+            line = line[max_chars:]
+        lines.append(line)
+
+    merged: List[str] = []
+    buf = ""
+    for line in lines:
+        buf = f"{buf} {line}".strip() if buf else line
+        if len(buf) >= max_chars:
+            merged.append(buf)
+            buf = ""
+    if buf:
+        merged.append(buf)
+
+    seen = set()
     chunks: List[str] = []
-    start = 0
-    while start < len(text):
-        chunks.append(text[start:start + size])
-        start += size - overlap
-    return [c for c in chunks if c.strip()]
+    for chunk in lines + merged:
+        if chunk not in seen:
+            seen.add(chunk)
+            chunks.append(chunk)
+    return chunks
 
 
-def _max_cosine_similarity(query_vec: List[float], chunk_vecs: List[Any]) -> float:
-    import numpy as np
-    q = np.asarray(query_vec, dtype=float)
-    if not len(q) or not len(chunk_vecs):
-        return 0.0
-    best = 0.0
-    for cv in chunk_vecs:
-        v = np.asarray(cv, dtype=float)
-        denom = float(np.linalg.norm(q) * np.linalg.norm(v))
-        if denom > 0:
-            best = max(best, float(np.dot(q, v) / denom))
-    return best
+def _similarity_scores_sync(rule_texts: List[str], chunk_texts: List[str]) -> List[float]:
+    """
+    Temp-collection similarity search on Qdrant Cloud (blocking client calls —
+    caller wraps in asyncio.to_thread). Returns one best-match score per rule.
+    """
+    import uuid as _uuid
+    from qdrant_client import models as _models
+    from app.services.vector_store import vector_manager
+
+    client = vector_manager.client
+    coll = f"pb_verify_{_uuid.uuid4().hex[:10]}"
+    try:
+        client.create_collection(
+            collection_name=coll,
+            vectors_config=_models.VectorParams(size=_E5_VECTOR_SIZE, distance=_models.Distance.COSINE),
+        )
+        client.upsert(
+            collection_name=coll,
+            points=[
+                _models.PointStruct(
+                    id=idx,
+                    # Symmetric "query: " prefixes on BOTH sides — e5's passage/query
+                    # asymmetric convention compresses score separation badly here
+                    vector=_models.Document(text=f"query: {chunk}", model=_SIMILARITY_E5_MODEL),
+                    payload={"chunk": chunk[:200]},
+                )
+                for idx, chunk in enumerate(chunk_texts)
+            ],
+            wait=True,
+        )
+        scores: List[float] = []
+        for rule_text in rule_texts:
+            res = client.query_points(
+                collection_name=coll,
+                query=_models.Document(text=f"query: {rule_text}", model=_SIMILARITY_E5_MODEL),
+                limit=1,
+                with_payload=False,
+            )
+            scores.append(float(res.points[0].score) if res.points else 0.0)
+        return scores
+    finally:
+        try:
+            client.delete_collection(coll)
+        except Exception:
+            pass
 
 
-def _verify_rules_against_source(rules: List[Dict[str, Any]], raw_text: str) -> List[Dict[str, Any]]:
+async def _verify_rules_against_source(rules: List[Dict[str, Any]], raw_text: str) -> List[Dict[str, Any]]:
     """
     Enriches each rule with review metadata (guarded — on any internal failure the
     rules are returned unflagged so upload never breaks):
-      - source_similarity: best cosine similarity vs source chunks (empty if N/A)
+      - source_similarity: best similarity vs source chunks (omitted if layer 1b is
+        disabled or unavailable)
       - needs_review + review_reasons: critical-term violations and/or low similarity
+
+    Similarity threshold is ADAPTIVE: real LLM rule descriptions legitimately score
+    across a range (0.87–0.93 observed) that shifts per playbook, so a rule is
+    flagged when it falls well below its own playbook's median (outlier detection),
+    with an absolute floor for small/catastrophic cases. Calibrated on:
+      synthetic set  — faithful 0.94–0.98, semantic drift 0.89, bogus 0.80
+      real playbook  — 9 genuine rules 0.894–0.931 (median 0.919), planted bogus 0.853
     """
     if not rules:
         return rules
 
     normalized_source = _normalize_for_term_match(raw_text[:_MAX_SOURCE_TEXT_CHARS])
 
-    chunk_vecs: List[Any] = []
-    try:
-        embedder = _get_embedder()
-        # Embed RAW source chunks — punctuation/structure materially improve
-        # similarity quality; _normalize_for_term_match is only for layer 1a.
-        chunks = _chunk_text(raw_text[:_MAX_SOURCE_TEXT_CHARS], _CHUNK_CHARS, _CHUNK_OVERLAP)
-        if chunks:
-            chunk_vecs = list(embedder.embed(chunks))
-    except Exception as exc:
-        logger.warning("[playbook_parser] Embedding similarity unavailable (skipping layer 1b): %s", exc)
+    # Layer 1b: similarity via Qdrant cloud inference (optional, guarded).
+    # Description only — the suggested_redline is LLM-drafted template text that
+    # is not expected to appear in the source and only dilutes the score.
+    similarity_scores: Optional[List[float]] = None
+    if _similarity_check_enabled():
+        rule_texts = [str(r.get("rule_description", "")).strip() for r in rules]
+        chunks = _chunk_text(raw_text[:_MAX_SOURCE_TEXT_CHARS])
+        if any(rule_texts) and chunks:
+            try:
+                similarity_scores = await asyncio.to_thread(_similarity_scores_sync, rule_texts, chunks)
+            except Exception as exc:
+                logger.warning("[playbook_parser] Similarity check unavailable (skipping layer 1b): %s", exc)
 
-    for rule in rules:
+    if similarity_scores is not None:
+        sims = similarity_scores
+        if len(sims) >= 4:
+            sorted_sims = sorted(sims)
+            mid = len(sorted_sims) // 2
+            median = sorted_sims[mid] if len(sorted_sims) % 2 else (sorted_sims[mid - 1] + sorted_sims[mid]) / 2
+            effective_threshold = max(_ABSOLUTE_SIMILARITY_FLOOR, round(median - _REVIEW_OUTLIER_MARGIN, 3))
+        else:
+            effective_threshold = _ABSOLUTE_SIMILARITY_FLOOR
+        logger.info("[playbook_parser] Adaptive similarity threshold: %.3f", effective_threshold)
+
+    for idx, rule in enumerate(rules):
         reasons: List[str] = []
         violations = _critical_term_violations(rule, normalized_source)
         for tok in violations:
             reasons.append(f"Critical term '{tok}' cited in the rule was not found in the source playbook text.")
 
-        similarity: Optional[float] = None
-        if chunk_vecs:
-            rule_text = f"{rule.get('rule_description', '')} {rule.get('suggested_redline', '')}".strip()
-            if rule_text:
-                try:
-                    rule_vec = next(iter(embedder.embed([rule_text])))
-                    similarity = round(_max_cosine_similarity(rule_vec, chunk_vecs), 3)
-                except Exception as exc:
-                    logger.warning("[playbook_parser] Rule embedding failed: %s", exc)
-            if similarity is not None:
-                rule["source_similarity"] = similarity
-                if similarity < _REVIEW_SIMILARITY_THRESHOLD:
-                    reasons.append(
-                        f"Low textual similarity to the source playbook ({similarity:.2f} < "
-                        f"{_REVIEW_SIMILARITY_THRESHOLD}). The rule may be paraphrased, invented, or misplaced."
-                    )
+        if similarity_scores is not None:
+            similarity = round(similarity_scores[idx], 3)
+            rule["source_similarity"] = similarity
+            if similarity < effective_threshold:
+                reasons.append(
+                    f"Low textual similarity to the source playbook ({similarity:.2f} < "
+                    f"{effective_threshold:.2f}). The rule may be paraphrased, invented, or misplaced."
+                )
 
         rule["needs_review"] = bool(reasons)
         rule["review_reasons"] = reasons
@@ -371,7 +445,7 @@ async def parse_playbook_to_rules(raw_text: str) -> List[Dict[str, Any]]:
 
     # Layer 1: deterministic + embedding verification against the source text
     try:
-        rules = _verify_rules_against_source(rules, raw_text)
+        rules = await _verify_rules_against_source(rules, raw_text)
     except Exception as exc:
         logger.warning("[playbook_parser] Rule verification failed (returning unflagged rules): %s", exc)
 
