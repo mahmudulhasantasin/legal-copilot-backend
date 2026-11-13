@@ -174,6 +174,62 @@ def _fill_clause_coverage(
     return risks
 
 
+def _ensure_playbook_coverage(
+    risks: List[Dict[str, Any]],
+    playbook_rules: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Deterministic playbook coverage check: the LLM is instructed to cite rule IDs,
+    but it can silently skip rules. Any active rule whose ID (or description prefix)
+    never appears anywhere in the audit output gets an explicit REVIEW_REQUIRED row,
+    so a skipped rule can never masquerade as "evaluated and compliant".
+    """
+    if not playbook_rules:
+        return risks
+
+    output_blob = "\n".join(
+        " ".join(
+            str(r.get(k, "") or "")
+            for k in ("violated_law", "explanation", "recommendation", "clause_title")
+        ).lower()
+        for r in risks
+    )
+
+    for rule in playbook_rules:
+        rule_id = str(rule.get("rule_id", "")).strip()
+        desc = str(rule.get("rule_description", "")).strip()
+        matched = False
+        if rule_id and rule_id.lower() in output_blob:
+            matched = True
+        elif desc:
+            probe = re.sub(r"\s+", " ", desc.lower())[:40].strip()
+            matched = bool(probe) and probe in output_blob
+        if matched:
+            continue
+
+        category = str(rule.get("category", "")).strip()
+        risks.append({
+            "source_clause_number": "",
+            "clause_title": f"Playbook Rule {rule_id or 'N/A'}" + (f" ({category})" if category else ""),
+            "severity": "MODERATE",
+            "statutory_status": "REVIEW_REQUIRED",
+            "flagged_text": desc[:300],
+            "violated_law": f"Internal Playbook {rule_id}" if rule_id else "Internal Playbook Rule",
+            "explanation": (
+                "This company playbook rule was not explicitly addressed anywhere in the automated audit "
+                "findings. It may in fact be satisfied, but the engine could not confirm the evaluation, "
+                "so manual verification of this requirement against the contract is required."
+            ),
+            "recommendation": str(rule.get("suggested_redline", "") or "")[:300],
+            "is_compliant": False,
+            "is_statute_verified": True,
+            "statute_verified_label": "Company Playbook Rule",
+            "is_quote_grounded": False,
+        })
+
+    return risks
+
+
 _BN_TO_EN_DIGITS = str.maketrans("০১২৩৪৫৬৭৮৯", "0123456789")
 
 # 4-digit years (act enactment years) must never be treated as section numbers
@@ -335,8 +391,8 @@ async def analyze_contract_risk_async(
     clauses_ast = extract_clauses_from_text(text)
     logger.info(f"[contract_graph] Parsed {len(clauses_ast)} structured clause(s). Domain: {domain_name}")
 
-    # Step 2: Missing Mandatory Clause Gap Analysis
-    missing_provisions = detect_missing_mandatory_provisions(clauses_ast, domain, text)
+    # Step 2: Missing Mandatory Clause Gap Analysis (statutory + playbook-required)
+    missing_provisions = detect_missing_mandatory_provisions(clauses_ast, domain, text, playbook_rules=rules)
     stamp_duty_advisory = generate_stamp_duty_advisory(domain, text)
 
     # Step 3: Targeted Multi-Domain Statutory Retrieval
@@ -417,7 +473,11 @@ async def analyze_contract_risk_async(
     # Step 5b: Anti-hallucination grounding of flagged quotes
     verified_risks = _ground_flagged_quotes(verified_risks, clauses_ast, text)
 
-    # Step 5c: Coverage fill — one audit row per parsed clause
+    # Step 5c: Deterministic playbook coverage — a silently skipped rule
+    # surfaces as an explicit REVIEW_REQUIRED row instead of vanishing
+    verified_risks = _ensure_playbook_coverage(verified_risks, rules)
+
+    # Step 5d: Coverage fill — one audit row per parsed clause
     # In degraded mode (LLM outage) unanalyzed clauses are marked NOT_ANALYZED, never COMPLIANT
     verified_risks = _fill_clause_coverage(verified_risks, clauses_ast, degraded=llm_degraded)
 

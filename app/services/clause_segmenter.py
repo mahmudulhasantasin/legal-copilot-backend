@@ -765,14 +765,32 @@ def classify_contract_domain(text: str) -> Dict[str, Any]:
 # MISSING PROVISIONS DETECTOR (BILINGUAL, NO SAAS BIAS)
 # ──────────────────────────────────────────────────────────
 
+# Playbook category → keywords indicating the contract actually contains a
+# provision of that category. If an enterprise playbook has a rule in a category
+# but the contract has NO provision touching that category at all, the playbook
+# requirement cannot be satisfied and must surface as a missing provision.
+PLAYBOOK_CATEGORY_PROVISION_KEYWORDS: Dict[str, List[str]] = {
+    "Liability": ["liability", "indemnity", "indemnification", "ক্ষতিপূরণ", "দায়"],
+    "Payment": ["payment", "invoice", "payment terms", "পেমেন্ট", "মূল্যপরিশোধ"],
+    "Termination": ["termination", "terminate", "চুক্তি বাতিল", "সমাপ্তি"],
+    "Governing Law": ["governing law", "jurisdiction", "applicable law", "প্রযোজ্য আইন", "এখতিয়ার"],
+    "Confidentiality": ["confidential", "non-disclosure", "nda", "গোপনীয়তা"],
+}
+
+
 def detect_missing_mandatory_provisions(
     clauses: List[Dict[str, Any]],
     domain: str,
     full_text: str,
+    playbook_rules: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Compares parsed clauses against mandatory protective provisions for the detected
     Bangladesh contract domain (supporting both English and Bengali keywords).
+
+    When enterprise `playbook_rules` are supplied, a rule whose category has no
+    corresponding provision anywhere in the contract is reported as missing —
+    the playbook requirement cannot possibly be satisfied without the clause.
     """
     mandatory_list = DOMAIN_MANDATORY_PROVISIONS.get(
         domain, DOMAIN_MANDATORY_PROVISIONS["GENERAL_COMMERCIAL"]
@@ -795,6 +813,32 @@ def detect_missing_mandatory_provisions(
                 "statutory_reference": item["statutory_ref"],
                 "risk_explanation": item["risk_if_missing"],
                 "severity": item["severity"],
+            })
+
+    if playbook_rules:
+        seen_titles = {m["title"] for m in missing}
+        for rule in playbook_rules:
+            category = str(rule.get("category", "")).strip()
+            keywords = PLAYBOOK_CATEGORY_PROVISION_KEYWORDS.get(category)
+            if not keywords:
+                continue
+            if any(_contains_term(lower_full, kw) for kw in keywords):
+                continue
+            rule_id = str(rule.get("rule_id", "")).strip() or "N/A"
+            title = f"Playbook-required {category} provision"
+            if title in seen_titles:
+                continue
+            seen_titles.add(title)
+            missing.append({
+                "provision_id": f"PLAYBOOK_{rule_id}",
+                "title": title,
+                "statutory_reference": f"Internal Playbook Rule {rule_id}",
+                "risk_explanation": (
+                    f"Your company playbook contains a {category} rule ({rule_id}), but the contract "
+                    f"contains no {category.lower()} provision at all. The playbook requirement therefore "
+                    "cannot be satisfied; add the required clause before signing."
+                ),
+                "severity": "HIGH" if str(rule.get("severity", "")).upper() in ("CRITICAL", "HIGH") else "MODERATE",
             })
 
     return missing
