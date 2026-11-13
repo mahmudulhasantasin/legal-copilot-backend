@@ -670,13 +670,17 @@ def classify_contract_domain(text: str) -> Dict[str, Any]:
     party_a = "Client / First Party"
     party_b = "Service Provider / Second Party"
 
+    # Bengali PDFs frequently store য় decomposed (য + nukta U+09AF U+09BC) while
+    # our patterns use the precomposed form (U+09DF) — normalize before matching.
+    party_search_text = (text or "").replace("\u09af\u09bc", "\u09df")
+
     def _extract_party(label_pattern: str, fallback: str) -> str:
         """
         Resolves a party label to its legal entity name. The label line often
         carries only the role ("Party A – Client"); the registered company name
         sits on a nearby following line ("Company Name: Nexora ... Ltd.").
         """
-        m = re.search(label_pattern, text or "", re.IGNORECASE)
+        m = re.search(label_pattern, party_search_text, re.IGNORECASE)
         if not m:
             return fallback
 
@@ -684,7 +688,7 @@ def classify_contract_domain(text: str) -> Dict[str, Any]:
         inline = (m.group(1) or "").strip() if m.lastindex else ""
 
         # 2. Look ahead a few lines for the registered entity name
-        lookahead = (text or "")[m.end(): m.end() + 400]
+        lookahead = party_search_text[m.end(): m.end() + 400]
         company_m = re.search(
             r"(?:Company\s*Name|Company|Organization|Organisation|Entity)\s*[:\-]\s*([^\n\r,;।]+)",
             lookahead,
@@ -707,14 +711,25 @@ def classify_contract_domain(text: str) -> Dict[str, Any]:
         if suffix_m:
             return suffix_m.group(1).strip().rstrip(".")
 
+        # 2b. Bengali deeds: the party's legal name sits on the next "নাম: ..." line
+        name_m = re.search(r"নাম\s*[:\-]\s*([^\n\r,;।]+)", lookahead)
+        if name_m:
+            name = name_m.group(1).strip().rstrip(".।")
+            if len(name) >= 3 and name not in _ROLE_WORDS:
+                return name
+
         # 3. Fall back to the inline capture, ignoring pure role words
-        if inline and inline.lower() not in (
-            "client", "vendor", "service provider", "employer", "employee",
-            "buyer", "seller", "landlord", "tenant", "lender", "borrower",
-            "first party", "second party", "party a", "party b",
-        ):
+        if inline and inline.lower() not in _ROLE_WORDS and inline not in _ROLE_WORDS:
             return inline.rstrip(".")
         return fallback
+
+    _ROLE_WORDS = {
+        "client", "vendor", "service provider", "employer", "employee",
+        "buyer", "seller", "landlord", "tenant", "lender", "borrower",
+        "first party", "second party", "party a", "party b",
+        "বিক্রেতা", "ক্রেতা", "ভাড়াটিয়া", "বাড়িওয়ালা", "মালিক", "নিয়োগকর্তা",
+        "কর্মচারী", "ঋণদাতা", "ঋণগ্রহীতা", "ঠিকাদার", "প্রথম পক্ষ", "দ্বিতীয় পক্ষ",
+    }
 
     party_a = _extract_party(
         r"(?:^|[\n\r,;।])\s*(?:Party\s*A|First\s*Party|Client|Employer|Landlord|Disclosing\s*Party|Seller|Lender|"
