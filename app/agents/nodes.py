@@ -18,6 +18,54 @@ MAX_CONTRACT_CHARS = 35000   # Supports ~15 pages
 CHUNK_SIZE         = 12000   # High-context window per LLM call
 CHUNK_OVERLAP      = 800
 
+# Playbook context budget — caps the rules injected into the audit prompt so a
+# large enterprise playbook can never overflow the fallback model's input limit
+MAX_PLAYBOOK_RULES_FULL = 12
+MAX_PLAYBOOK_RULE_CHARS_FULL = 350
+MAX_PLAYBOOK_RULES_COMPACT = 5
+MAX_PLAYBOOK_RULE_CHARS_COMPACT = 120
+
+_PLAYBOOK_SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MODERATE": 2, "MEDIUM": 2, "LOW": 3}
+
+
+def _build_playbook_context(
+    rule_list: List[Dict[str, Any]], max_rules: int, max_rule_chars: int
+) -> str:
+    """Severity-ranked, char-capped playbook block for the audit prompt."""
+    if not rule_list:
+        return ""
+    ranked = sorted(
+        rule_list,
+        key=lambda r: _PLAYBOOK_SEVERITY_ORDER.get(str(r.get("severity", "")).upper(), 2),
+    )
+    kept = ranked[:max_rules]
+    dropped = len(ranked) - len(kept)
+
+    lines: List[str] = []
+    for r in kept:
+        desc_raw = str(r.get("rule_description", ""))
+        desc = desc_raw[:max_rule_chars] + ("…" if len(desc_raw) > max_rule_chars else "")
+        redline = str(r.get("suggested_redline", ""))[:max_rule_chars]
+        lines.append(
+            f"- Rule ID: {r.get('rule_id', 'N/A')}\n"
+            f"  Category: {r.get('category', 'General')}\n"
+            f"  Rule: {desc}\n"
+            f"  Severity: {r.get('severity', 'MODERATE')}\n"
+            f"  Suggested Redline: {redline}"
+        )
+    tail = ""
+    if dropped:
+        tail = (
+            f"\n(+{dropped} lower-priority playbook rules omitted from this view due to the "
+            "context budget; enforce the listed rules first.)\n"
+        )
+    return (
+        f"\nCOMPANY INTERNAL PLAYBOOK RULES (MUST ENFORCE):\n"
+        f"{chr(10).join(lines)}\n{tail}\n"
+        "CRITICAL INSTRUCTION: Flag any playbook violation. "
+        "In 'violated_law' cite the rule ID (e.g. \"Internal Playbook RULE-CAT-01\").\n"
+    )
+
 
 # Domain-specific statutory search queries
 DOMAIN_RETRIEVAL_QUERIES = {
@@ -174,22 +222,11 @@ async def analyze_risk_node(state: dict) -> dict:
     laws_context = _build_laws_context(statutes)
     laws_context_compact = _build_laws_context(statutes, max_laws=3, max_chars=600)
 
-    # 2. Enterprise Playbook context
-    playbook_context = ""
-    if playbook_rules:
-        rules_text = "\n".join([
-            f"- Rule ID: {r.get('rule_id', 'N/A')}\n"
-            f"  Category: {r.get('category', 'General')}\n"
-            f"  Rule: {r.get('rule_description', '')}\n"
-            f"  Severity: {r.get('severity', 'MODERATE')}\n"
-            f"  Suggested Redline: {r.get('suggested_redline', '')}"
-            for r in playbook_rules
-        ])
-        playbook_context = (
-            f"\nCOMPANY INTERNAL PLAYBOOK RULES (MUST ENFORCE):\n{rules_text}\n\n"
-            "CRITICAL INSTRUCTION: Flag any playbook violation. "
-            "In 'violated_law' cite the rule ID (e.g. \"Internal Playbook RULE-CAT-01\").\n"
-        )
+    # 2. Enterprise Playbook context (budgeted — a large playbook must never blow
+    #    the LLM input limit; rules are severity-ranked so the most important ones
+    #    survive truncation, and the compact fallback rung gets an even smaller view)
+    playbook_context = _build_playbook_context(playbook_rules, MAX_PLAYBOOK_RULES_FULL, MAX_PLAYBOOK_RULE_CHARS_FULL)
+    playbook_context_compact = _build_playbook_context(playbook_rules, MAX_PLAYBOOK_RULES_COMPACT, MAX_PLAYBOOK_RULE_CHARS_COMPACT)
 
     # 3. Prompt builder — factored out so retries can rebuild with fewer clauses / compact statutes
     def _build_prompt(clause_list: List[Dict[str, Any]], compact: bool = False) -> str:
@@ -218,7 +255,7 @@ async def analyze_risk_node(state: dict) -> dict:
             f"CONTRACT DOMAIN: {domain_name}\n\n"
             f"RELEVANT BANGLADESH CODIFIED STATUTORY CONTEXT:\n"
             f"{laws_context_compact if compact else laws_context}\n\n"
-            f"{playbook_context}"
+            f"{playbook_context_compact if compact else playbook_context}"
             f"{output_budget}"
             f"CONTRACT TEXT FOR AUDIT:\n---\n{formatted_contract}\n---\n"
         )

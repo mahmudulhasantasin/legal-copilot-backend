@@ -743,10 +743,35 @@ async def list_playbooks(
             "title": p.title,
             "is_active": p.is_active,
             "rules_count": len(p.rules_json or []),
+            "rules": p.rules_json or [],
             "created_at": p.created_at,
         }
         for p in rows
     ]
+
+
+@router.get("/playbooks/{playbook_id}")
+async def get_playbook_detail(
+    playbook_id: int,
+    ent: Enterprise = Depends(get_enterprise_user),
+    db: AsyncSession = Depends(get_db),
+):
+    pb = await db.scalar(
+        select(CompanyPlaybook).where(
+            CompanyPlaybook.id == playbook_id,
+            CompanyPlaybook.enterprise_id == ent.id,
+        )
+    )
+    if not pb:
+        raise HTTPException(404, "Playbook not found.")
+    return {
+        "id": pb.id,
+        "title": pb.title,
+        "is_active": pb.is_active,
+        "rules_count": len(pb.rules_json or []),
+        "rules": pb.rules_json or [],
+        "created_at": pb.created_at,
+    }
 
 
 @router.post("/playbooks/{playbook_id}/activate")
