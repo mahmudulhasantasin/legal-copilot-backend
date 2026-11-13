@@ -26,10 +26,12 @@ google-auth>=2.30.0
 # AI, LLM & LangChain Ecosystem
 google-genai>=1.0.0
 langchain-google-genai>=2.0.0
-langchain-core>=0.3.0
+langchain-openai>=0.1.0
 langchain-groq>=0.1.0
+langchain-core>=0.3.0
 langchain-text-splitters>=0.2.0
 langgraph>=0.2.0
+openai>=1.0.0
 groq>=0.9.0
 
 # Vector Search, RAG & MCP
