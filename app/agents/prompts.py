@@ -174,9 +174,9 @@ STATUTORY DOCTRINES UNDER BANGLADESH LAW:
    - Any covenant restraining post-employment trade, profession, or lawful business is VOID ab initio under Bangladesh law. Only trade secret / non-disclosure protections are enforceable.
 3. Impossibility & Frustration (The Contract Act, 1872 - Section 56):
    - Normal commercial fluctuations, inflation, or operational cost increases CANNOT be excused as Force Majeure under Section 56.
-4. Computer Software & Work for Hire (Copyright Act, 2000 - Sections 15, 17, 18):
+4. Computer Software & Work for Hire (Copyright Act, 2023 - Sections 15, 16, 17):
    - Custom software ownership must be explicitly assigned in writing. Retaining core IP until 100% payment without clear delivery escrow creates risk. Silence on third-party Open Source Software (OSS) licenses creates severe compliance exposure.
-5. Data Privacy & Incident Notice (Cyber Security Act, 2023 & ICT Act, 2006):
+5. Data Privacy & Incident Notice (Cyber Security Act, 2026, Personal Data Protection Act, 2026 & ICT Act, 2006):
    - Processing personal/commercial data requires reasonable security, sub-processor consent, and timely breach notification.
 6. Restoration of Advantage on Void/Terminated Agreements (The Contract Act, 1872 - Sections 64, 65):
    - Advance payments for unperformed services must be refunded if the contract is terminated or rescinded.

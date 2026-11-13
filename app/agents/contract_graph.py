@@ -183,8 +183,9 @@ _SECTION_TOKEN_RE = re.compile(r"\b(\d{1,3}[A-Za-z]?)\b")
 _ACT_HINTS = [
     ("contract", "The Contract Act, 1872"),
     ("labour", "Bangladesh Labour Act, 2006"),
-    ("copyright", "Copyright Act, 2000"),
-    ("cyber", "Cyber Security Act, 2023"),
+    ("copyright", "Copyright Act, 2023"),
+    ("cyber", "Cyber Security Act, 2026"),
+    ("data protection", "Personal Data Protection Act, 2026"),
     ("ict", "ICT Act, 2006"),
     ("arbitration", "Arbitration Act, 2001"),
     ("transfer of property", "The Transfer of Property Act, 1882"),

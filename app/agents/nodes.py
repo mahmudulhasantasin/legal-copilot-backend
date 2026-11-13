@@ -23,8 +23,8 @@ CHUNK_OVERLAP      = 800
 DOMAIN_RETRIEVAL_QUERIES = {
     "TECH_SAAS_VENDOR": [
         "The Contract Act 1872 Section 74 penalty liquidated damages interest rate",
-        "Copyright Act 2000 software source code ownership work for hire",
-        "Cyber Security Act 2023 data security breach notification sub-processor",
+        "Copyright Act 2023 software source code ownership work for hire assignment",
+        "Cyber Security Act 2026 Personal Data Protection Act 2026 data security breach notification sub-processor",
         "The Contract Act 1872 Section 56 force majeure frustration",
         "Arbitration Act 2001 domestic dispute resolution Dhaka"
     ],
@@ -166,8 +166,8 @@ async def analyze_risk_node(state: dict) -> dict:
             "Apply mandatory codified provisions of Bangladesh Law:\n"
             "- The Contract Act, 1872 (Section 27 Restraint of Trade, Section 28 Legal Proceedings, "
             "Section 56 Frustration, Section 74 Liquidated Damages/Penalties).\n"
-            "- Copyright Act, 2000 (Software ownership & assignment).\n"
-            "- Cyber Security Act, 2023 / ICT Act, 2006 (Data privacy and breach notification).\n"
+            "- Copyright Act, 2023 (Software ownership & assignment).\n"
+            "- Cyber Security Act, 2026 / Personal Data Protection Act, 2026 / ICT Act, 2006 (Data privacy and breach notification).\n"
             "- Arbitration Act, 2001 (Dispute resolution)."
         )
 
@@ -365,7 +365,7 @@ async def synthesize_summary_node(
         return (
             f"The evaluated {domain_name} contains critical structural and commercial vulnerabilities when audited "
             f"from the perspective of the {audited_for}. Primary legal concerns include disproportionate late payment penalties "
-            f"under Section 74 of The Contract Act, 1872, absence of mandatory data breach protocols under the Cyber Security Act, 2023, "
+            f"under Section 74 of The Contract Act, 1872, absence of mandatory data breach protocols under the Cyber Security Act, 2026 and the Personal Data Protection Act, 2026, "
             f"and unrefunded advance payments upon early termination. "
             f"Additionally, the agreement lacks essential protective provisions including express third-party software licensing terms "
             f"and mutual intellectual property indemnification. Immediate redline negotiations are advised prior to execution."
