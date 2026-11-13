@@ -7,6 +7,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatResult
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -56,27 +57,70 @@ class CustomFallbackLLM(BaseChatModel):
         return {"primary": self.primary_name, "fallback": self.fallback_name}
 
 
-def get_llm() -> BaseChatModel:
-    """Returns the production LLM (Gemini 3.5 Flash Lite primary with Groq Qwen 3.8 27B fallback)."""
-    gemini_key = (
-        getattr(settings, "GEMINI_API_KEY", None)
-        or os.getenv("GEMINI_API_KEY")
-        or os.getenv("GOOGLE_API_KEY")
+def _chain_llms(providers: List[tuple[str, Any]]) -> Optional[BaseChatModel]:
+    """Chains multiple LLM providers together using CustomFallbackLLM."""
+    if not providers:
+        return None
+    if len(providers) == 1:
+        return providers[0][1]
+
+    curr_name, curr_llm = providers[-1]
+    for name, llm in reversed(providers[:-1]):
+        curr_llm = CustomFallbackLLM(
+            primary=llm,
+            fallback=curr_llm,
+            primary_name=name,
+            fallback_name=curr_name,
+        )
+        curr_name = f"{name}->{curr_name}"
+    return curr_llm
+
+
+def _resolve_key(name: str, fallback_env: Optional[str] = None) -> str:
+    val = getattr(settings, name, None)
+    if val is not None:
+        return str(val).strip()
+    if fallback_env:
+        fb = os.getenv(fallback_env)
+        if fb is not None:
+            return str(fb).strip()
+    return (os.getenv(name) or "").strip()
+
+
+def get_llm(prefer_chat_model: bool = False) -> BaseChatModel:
+    """
+    Returns the production LLM with multi-tier automatic fallback.
+    Supported providers:
+      1. Gemini: Google Gemini API (gemini-3.5-flash-lite)
+      2. ZAI: Zhipu AI / GLM OpenAI-compatible API (e.g. glm-4-flash)
+      3. Groq: Groq Cloud API (qwen/qwen3.8-27b)
+    """
+    gemini_key = _resolve_key("GEMINI_API_KEY", fallback_env="GOOGLE_API_KEY")
+    groq_key = _resolve_key("GROQ_API_KEY")
+    zai_key = _resolve_key("ZAI_API_KEY")
+    zai_base_url = _resolve_key("ZAI_BASE_URL") or "https://open.bigmodel.cn/api/paas/v4/"
+    zai_model = _resolve_key("ZAI_MODEL") or "glm-4.5-flash"
+    disable_thinking_raw = getattr(settings, "ZAI_DISABLE_THINKING", None)
+    if disable_thinking_raw is None:
+        disable_thinking_raw = os.getenv("ZAI_DISABLE_THINKING", "true")
+    disable_thinking = (
+        disable_thinking_raw
+        if isinstance(disable_thinking_raw, bool)
+        else str(disable_thinking_raw).strip().lower() in ("1", "true", "yes", "on")
     )
-    groq_key = getattr(settings, "GROQ_API_KEY", None) or os.getenv("GROQ_API_KEY")
+    primary_pref = _resolve_key("PRIMARY_LLM").lower()
 
     gemini_llm = None
+    zai_llm = None
     groq_llm = None
 
-    # 1. Primary: Gemini Flash Lite (avoids Groq on_demand 1000 OTPM throttling on long JSON outputs)
+    # 1. Gemini
     if gemini_key:
         try:
             gemini_llm = ChatGoogleGenerativeAI(
                 model="gemini-3.5-flash-lite",
                 google_api_key=gemini_key,
                 temperature=0.1,
-                # Free tier comfortably supports 8K output (250K TPM / 500 RPD);
-                # 3000 truncated full-contract audit JSON (17+ clause risks).
                 max_output_tokens=8000,
                 max_retries=2,
                 timeout=90.0,
@@ -87,9 +131,29 @@ def get_llm() -> BaseChatModel:
     else:
         logger.warning("GEMINI_API_KEY is not configured in environment or settings.")
 
-    # 2. Fallback: Groq (kept qwen/qwen3.8-27b). Free tier allows 8,000 TPM / 200,000 TPD
-    # (no separate OTPM cap), so chat answers no longer truncate at 950 tokens.
-    # Audit input (~5K tokens) + this output still fits the 8K TPM budget in compact mode.
+    # 2. ZAI (Zhipu AI / GLM OpenAI-compatible)
+    if zai_key:
+        try:
+            zai_kwargs = {
+                "model": zai_model,
+                "api_key": zai_key,
+                "base_url": zai_base_url,
+                "temperature": 0.1,
+                "max_tokens": 4096,
+                "timeout": 60.0,
+            }
+            if disable_thinking:
+                # Disabling thinking stops internal reasoning tokens, eliminating 11s-57s latency spikes
+                zai_kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+
+            zai_llm = ChatOpenAI(**zai_kwargs)
+            logger.info(f"ZAI ({zai_model}) LLM initialized successfully (thinking_disabled={disable_thinking}).")
+        except Exception as exc:
+            logger.warning(f"Failed to initialize ZAI: {exc}")
+    else:
+        logger.warning("ZAI_API_KEY is not configured in environment or settings.")
+
+    # 3. Groq
     if groq_key:
         try:
             groq_llm = ChatGroq(
@@ -97,9 +161,6 @@ def get_llm() -> BaseChatModel:
                 api_key=groq_key,
                 temperature=0.1,
                 max_tokens=2000,
-                # qwen3 is a reasoning model — without this its thinking tokens
-                # eat the 950-token output budget and the audit JSON truncates
-                # (verified: reasoning_effort="none" → finish_reason=stop, ~205 tokens).
                 reasoning_effort="none",
                 max_retries=1,
                 timeout=45.0,
@@ -110,15 +171,35 @@ def get_llm() -> BaseChatModel:
     else:
         logger.warning("GROQ_API_KEY is not configured in environment or settings.")
 
-    if gemini_llm and groq_llm:
-        return CustomFallbackLLM(
-            primary=gemini_llm,
-            fallback=groq_llm,
-            primary_name="Gemini",
-            fallback_name="Groq",
-        )
+    # Determine provider priority order
+    available = {}
     if gemini_llm:
-        return gemini_llm
+        available["gemini"] = ("Gemini", gemini_llm)
+    if zai_llm:
+        available["zai"] = ("ZAI", zai_llm)
     if groq_llm:
-        return groq_llm
-    raise ValueError("Neither GEMINI_API_KEY nor GROQ_API_KEY is configured!")
+        available["groq"] = ("Groq", groq_llm)
+
+    if not available:
+        raise ValueError("Neither GEMINI_API_KEY, ZAI_API_KEY, nor GROQ_API_KEY is configured!")
+
+    providers_list = []
+    # Primary model selection: Gemini is default primary unless explicitly overridden by PRIMARY_LLM
+    if primary_pref == "zai" and "zai" in available:
+        providers_list.append(available.pop("zai"))
+    elif primary_pref == "groq" and "groq" in available:
+        providers_list.append(available.pop("groq"))
+    elif "gemini" in available:
+        providers_list.append(available.pop("gemini"))
+
+    # Append remaining available fallback providers in order: Gemini -> ZAI -> Groq
+    for key in ("gemini", "zai", "groq"):
+        if key in available:
+            providers_list.append(available.pop(key))
+
+    return _chain_llms(providers_list)
+
+
+def get_chat_llm() -> BaseChatModel:
+    """Returns the LLM configured for legal chat (Gemini primary -> ZAI fallback -> Groq fallback)."""
+    return get_llm()

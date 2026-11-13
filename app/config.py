@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     # AI Model Keys
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    ZAI_API_KEY: str = os.getenv("ZAI_API_KEY", "")
+    ZAI_BASE_URL: str = os.getenv("ZAI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/")
+    ZAI_MODEL: str = os.getenv("ZAI_MODEL", "glm-4.5-flash")
+    ZAI_DISABLE_THINKING: bool = os.getenv("ZAI_DISABLE_THINKING", "true").strip().lower() in (
+        "1", "true", "yes", "on"
+    )
+    PRIMARY_LLM: str = os.getenv("PRIMARY_LLM", "gemini")
     GOOGLE_APPLICATION_CREDENTIALS: str = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
 
@@ -71,6 +78,11 @@ ALGORITHM = settings.ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 GEMINI_API_KEY = settings.GEMINI_API_KEY
 GROQ_API_KEY = settings.GROQ_API_KEY
+ZAI_API_KEY = settings.ZAI_API_KEY
+ZAI_BASE_URL = settings.ZAI_BASE_URL
+ZAI_MODEL = settings.ZAI_MODEL
+ZAI_DISABLE_THINKING = settings.ZAI_DISABLE_THINKING
+PRIMARY_LLM = settings.PRIMARY_LLM
 GOOGLE_APPLICATION_CREDENTIALS = settings.GOOGLE_APPLICATION_CREDENTIALS
 SUPABASE_URL = settings.SUPABASE_URL
 SUPABASE_SERVICE_KEY = settings.SUPABASE_SERVICE_KEY
