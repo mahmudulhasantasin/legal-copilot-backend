@@ -1,7 +1,7 @@
 {
   "dataset_name": "advotech_contract_audit_gold_v1",
-  "version": "1.0.0",
-  "description": "32 gold contract audit cases covering all domains including Bengali Property Sale (LSA-2026-002) and Full Software Development Agreement (SDA-2026-011) with Playbook enforcement.",
+  "version": "1.1.0",
+  "description": "32 gold contract audit cases covering all domains including Bengali Property Sale (LSA-2026-002) and Full Software Development Agreement (SDA-2026-011) with Playbook enforcement. v1.1.0: added 4 full-length contracts (3 compliant LOW baselines + 1 HIGH statutory-trap supply contract) for full-pipeline and false-positive coverage. v1.1.0: added 4 full-length contracts (3 compliant LOW baselines + 1 HIGH statutory-trap supply contract) for full-pipeline and false-positive coverage.",
   "cases": [
     {
       "id": "CON-EMP-001",
@@ -17,10 +17,16 @@
           "clause_number": "6",
           "expected_severity": "HIGH",
           "expected_statutory_status": "VOID_AB_INITIO",
-          "expected_law_keywords": ["Contract Act", "1872", "27"]
+          "expected_law_keywords": [
+            "Contract Act",
+            "1872",
+            "27"
+          ]
         }
       ],
-      "expected_missing_provisions": ["STATUTORY_NOTICE_PERIOD"],
+      "expected_missing_provisions": [
+        "STATUTORY_NOTICE_PERIOD"
+      ],
       "notes": "Post-employment non-compete is VOID_AB_INITIO under Contract Act s.27."
     },
     {
@@ -37,10 +43,17 @@
           "clause_number": "3",
           "expected_severity": "HIGH",
           "expected_statutory_status": "REGULATORY_NON_COMPLIANT",
-          "expected_law_keywords": ["Labour Act", "2006", "26"]
+          "expected_law_keywords": [
+            "Labour Act",
+            "2006",
+            "26"
+          ]
         }
       ],
-      "expected_missing_provisions": ["STATUTORY_NOTICE_PERIOD", "PROVIDENT_FUND_GRATUITY"],
+      "expected_missing_provisions": [
+        "STATUTORY_NOTICE_PERIOD",
+        "PROVIDENT_FUND_GRATUITY"
+      ],
       "notes": "Violates Bangladesh Labour Act 2006 Section 26 (120/60 days notice or pay in lieu + 30 days/year compensation)."
     },
     {
@@ -70,16 +83,24 @@
           "clause_number": "5",
           "expected_severity": "HIGH",
           "expected_statutory_status": "STATUTORILY_RESTRICTED",
-          "expected_law_keywords": ["74", "Contract Act"]
+          "expected_law_keywords": [
+            "74",
+            "Contract Act"
+          ]
         },
         {
           "clause_number": "6",
           "expected_severity": "HIGH",
           "expected_statutory_status": "REGULATORY_NON_COMPLIANT",
-          "expected_law_keywords": ["Labour Act", "27"]
+          "expected_law_keywords": [
+            "Labour Act",
+            "27"
+          ]
         }
       ],
-      "expected_missing_provisions": ["STATUTORY_NOTICE_PERIOD"],
+      "expected_missing_provisions": [
+        "STATUTORY_NOTICE_PERIOD"
+      ],
       "notes": "Tests Section 74 penalty moderation + illegal retention of original documents / restraint."
     },
     {
@@ -96,7 +117,10 @@
           "clause_number": "3",
           "expected_severity": "HIGH",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["Copyright", "IP"]
+          "expected_law_keywords": [
+            "Copyright",
+            "IP"
+          ]
         }
       ],
       "expected_missing_provisions": [],
@@ -116,10 +140,17 @@
           "clause_number": "4",
           "expected_severity": "HIGH",
           "expected_statutory_status": "STATUTORILY_RESTRICTED",
-          "expected_law_keywords": ["Contract Act", "1872", "74"]
+          "expected_law_keywords": [
+            "Contract Act",
+            "1872",
+            "74"
+          ]
         }
       ],
-      "expected_missing_provisions": ["IP_ASSIGNMENT", "DATA_BREACH_NOTICE"],
+      "expected_missing_provisions": [
+        "IP_ASSIGNMENT",
+        "DATA_BREACH_NOTICE"
+      ],
       "notes": "Must classify excessive penalty as STATUTORILY_RESTRICTED under Section 74, NOT VOID_AB_INITIO."
     },
     {
@@ -136,22 +167,35 @@
           "clause_number": "1",
           "expected_severity": "HIGH",
           "expected_statutory_status": "STATUTORILY_RESTRICTED",
-          "expected_law_keywords": ["64", "65", "Contract Act"]
+          "expected_law_keywords": [
+            "64",
+            "65",
+            "Contract Act"
+          ]
         },
         {
           "clause_number": "2",
           "expected_severity": "HIGH",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["Copyright"]
+          "expected_law_keywords": [
+            "Copyright"
+          ]
         },
         {
           "clause_number": "4",
           "expected_severity": "HIGH",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["Cyber", "liability"]
+          "expected_law_keywords": [
+            "Cyber",
+            "liability"
+          ]
         }
       ],
-      "expected_missing_provisions": ["DATA_BREACH_NOTICE", "MUTUAL_IP_INDEMNIFICATION", "THIRD_PARTY_OSS_WARRANTY"],
+      "expected_missing_provisions": [
+        "DATA_BREACH_NOTICE",
+        "MUTUAL_IP_INDEMNIFICATION",
+        "THIRD_PARTY_OSS_WARRANTY"
+      ],
       "notes": "Multi-clause Tech SaaS audit protecting Client."
     },
     {
@@ -168,13 +212,19 @@
           "clause_number": "2",
           "expected_severity": "HIGH",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["Copyright", "IP"]
+          "expected_law_keywords": [
+            "Copyright",
+            "IP"
+          ]
         },
         {
           "clause_number": "3",
           "expected_severity": "HIGH",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["73", "Contract Act"]
+          "expected_law_keywords": [
+            "73",
+            "Contract Act"
+          ]
         }
       ],
       "expected_missing_provisions": [],
@@ -222,16 +272,25 @@
           "clause_number": "1",
           "expected_severity": "HIGH",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["RULE-FIN-01", "Playbook"]
+          "expected_law_keywords": [
+            "RULE-FIN-01",
+            "Playbook"
+          ]
         },
         {
           "clause_number": "2",
           "expected_severity": "HIGH",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["RULE-LIAB-02", "Playbook"]
+          "expected_law_keywords": [
+            "RULE-LIAB-02",
+            "Playbook"
+          ]
         }
       ],
-      "expected_missing_provisions": ["IP_ASSIGNMENT", "DATA_BREACH_NOTICE"],
+      "expected_missing_provisions": [
+        "IP_ASSIGNMENT",
+        "DATA_BREACH_NOTICE"
+      ],
       "notes": "Tests Enterprise Company Playbook Rule ID citation enforcement."
     },
     {
@@ -248,13 +307,20 @@
           "clause_number": "7",
           "expected_severity": "HIGH",
           "expected_statutory_status": "VOID_AB_INITIO",
-          "expected_law_keywords": ["27", "Contract Act"]
+          "expected_law_keywords": [
+            "27",
+            "Contract Act"
+          ]
         },
         {
           "clause_number": "7",
           "expected_severity": "HIGH",
           "expected_statutory_status": "STATUTORILY_RESTRICTED",
-          "expected_law_keywords": ["74", "65", "Contract Act"]
+          "expected_law_keywords": [
+            "74",
+            "65",
+            "Contract Act"
+          ]
         }
       ],
       "expected_missing_provisions": [],
@@ -274,10 +340,17 @@
           "clause_number": "1",
           "expected_severity": "HIGH",
           "expected_statutory_status": "REGULATORY_NON_COMPLIANT",
-          "expected_law_keywords": ["Registration Act", "1908", "17", "Stamp"]
+          "expected_law_keywords": [
+            "Registration Act",
+            "1908",
+            "17",
+            "Stamp"
+          ]
         }
       ],
-      "expected_missing_provisions": ["SECURITY_DEPOSIT_RETURN"],
+      "expected_missing_provisions": [
+        "SECURITY_DEPOSIT_RETURN"
+      ],
       "notes": "Lease > 1 year on plain paper violates Registration Act s.17/s.49 & Stamp Act 1899."
     },
     {
@@ -294,13 +367,21 @@
           "clause_number": "2",
           "expected_severity": "HIGH",
           "expected_statutory_status": "STATUTORILY_RESTRICTED",
-          "expected_law_keywords": ["65", "74", "Contract Act", "Premises Rent"]
+          "expected_law_keywords": [
+            "65",
+            "74",
+            "Contract Act",
+            "Premises Rent"
+          ]
         },
         {
           "clause_number": "3",
           "expected_severity": "HIGH",
           "expected_statutory_status": "REGULATORY_NON_COMPLIANT",
-          "expected_law_keywords": ["Premises Rent", "Transfer of Property"]
+          "expected_law_keywords": [
+            "Premises Rent",
+            "Transfer of Property"
+          ]
         }
       ],
       "expected_missing_provisions": [],
@@ -320,7 +401,10 @@
           "clause_number": "2",
           "expected_severity": "HIGH",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["Transfer of Property", "rent"]
+          "expected_law_keywords": [
+            "Transfer of Property",
+            "rent"
+          ]
         }
       ],
       "expected_missing_provisions": [],
@@ -353,7 +437,10 @@
           "clause_number": "4",
           "expected_severity": "HIGH",
           "expected_statutory_status": "VOID_AB_INITIO",
-          "expected_law_keywords": ["27", "Contract Act"]
+          "expected_law_keywords": [
+            "27",
+            "Contract Act"
+          ]
         }
       ],
       "expected_missing_provisions": [],
@@ -373,16 +460,25 @@
           "clause_number": "2",
           "expected_severity": "HIGH",
           "expected_statutory_status": "VOID_AB_INITIO",
-          "expected_law_keywords": ["28", "Contract Act", "court"]
+          "expected_law_keywords": [
+            "28",
+            "Contract Act",
+            "court"
+          ]
         },
         {
           "clause_number": "3",
           "expected_severity": "HIGH",
           "expected_statutory_status": "STATUTORILY_RESTRICTED",
-          "expected_law_keywords": ["74", "Contract Act"]
+          "expected_law_keywords": [
+            "74",
+            "Contract Act"
+          ]
         }
       ],
-      "expected_missing_provisions": ["STANDARD_EXCLUSIONS"],
+      "expected_missing_provisions": [
+        "STANDARD_EXCLUSIONS"
+      ],
       "notes": "Prohibiting compliance with court orders + excessive BDT 5 Crore liquidated penalty."
     },
     {
@@ -412,7 +508,10 @@
           "clause_number": "9",
           "expected_severity": "HIGH",
           "expected_statutory_status": "VOID_AB_INITIO",
-          "expected_law_keywords": ["28", "Contract Act"]
+          "expected_law_keywords": [
+            "28",
+            "Contract Act"
+          ]
         }
       ],
       "expected_missing_provisions": [],
@@ -432,7 +531,11 @@
           "clause_number": "6",
           "expected_severity": "HIGH",
           "expected_statutory_status": "STATUTORILY_RESTRICTED",
-          "expected_law_keywords": ["56", "65", "Contract Act"]
+          "expected_law_keywords": [
+            "56",
+            "65",
+            "Contract Act"
+          ]
         }
       ],
       "expected_missing_provisions": [],
@@ -452,13 +555,20 @@
           "clause_number": "3",
           "expected_severity": "HIGH",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["Contract Act", "73"]
+          "expected_law_keywords": [
+            "Contract Act",
+            "73"
+          ]
         },
         {
           "clause_number": "4",
           "expected_severity": "HIGH",
           "expected_statutory_status": "VOID_AB_INITIO",
-          "expected_law_keywords": ["28", "Contract Act", "Arbitration"]
+          "expected_law_keywords": [
+            "28",
+            "Contract Act",
+            "Arbitration"
+          ]
         }
       ],
       "expected_missing_provisions": [],
@@ -478,13 +588,20 @@
           "clause_number": "6",
           "expected_severity": "HIGH",
           "expected_statutory_status": "REGULATORY_NON_COMPLIANT",
-          "expected_law_keywords": ["Labour Act", "26", "125"]
+          "expected_law_keywords": [
+            "Labour Act",
+            "26",
+            "125"
+          ]
         },
         {
           "clause_number": "6",
           "expected_severity": "HIGH",
           "expected_statutory_status": "VOID_AB_INITIO",
-          "expected_law_keywords": ["27", "Contract Act"]
+          "expected_law_keywords": [
+            "27",
+            "Contract Act"
+          ]
         }
       ],
       "expected_missing_provisions": [],
@@ -504,11 +621,17 @@
           "clause_number": "5",
           "expected_severity": "HIGH",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["Contract Act", "consent"]
+          "expected_law_keywords": [
+            "Contract Act",
+            "consent"
+          ]
         }
       ],
-      "expected_missing_provisions": ["IP_ASSIGNMENT", "DATA_BREACH_NOTICE"],
-      "notes": "Unilateral pricing & feature deprecation risk for Client."
+      "expected_missing_provisions": [
+        "IP_ASSIGNMENT",
+        "DATA_BREACH_NOTICE"
+      ],
+      "notes": "Unilateral pricing & feature deprecation risk for Client. KNOWN DEBATE: unilateral 200% fee hike is primarily a COMMERCIAL issue, not a statutory violation; expected HIGH is kept deliberately strict — audits flagging only MODERATE should not be treated as hallucination. KNOWN DEBATE: unilateral 200% fee hike is primarily a COMMERCIAL issue, not a statutory violation; expected HIGH is kept deliberately strict — audits flagging only MODERATE should not be treated as hallucination."
     },
     {
       "id": "CON-TECH-008",
@@ -524,10 +647,16 @@
           "clause_number": "2",
           "expected_severity": "HIGH",
           "expected_statutory_status": "REGULATORY_NON_COMPLIANT",
-          "expected_law_keywords": ["Copyright", "Cyber Security"]
+          "expected_law_keywords": [
+            "Copyright",
+            "Cyber Security"
+          ]
         }
       ],
-      "expected_missing_provisions": ["DATA_BREACH_NOTICE", "MUTUAL_IP_INDEMNIFICATION"],
+      "expected_missing_provisions": [
+        "DATA_BREACH_NOTICE",
+        "MUTUAL_IP_INDEMNIFICATION"
+      ],
       "notes": "OSS copyleft contamination + unauthorized data sub-processing."
     },
     {
@@ -544,16 +673,25 @@
           "clause_number": "4",
           "expected_severity": "HIGH",
           "expected_statutory_status": "REGULATORY_NON_COMPLIANT",
-          "expected_law_keywords": ["Stamp Act", "Registration Act", "17"]
+          "expected_law_keywords": [
+            "Stamp Act",
+            "Registration Act",
+            "17"
+          ]
         },
         {
           "clause_number": "5",
           "expected_severity": "HIGH",
           "expected_statutory_status": "STATUTORILY_RESTRICTED",
-          "expected_law_keywords": ["74", "Contract Act"]
+          "expected_law_keywords": [
+            "74",
+            "Contract Act"
+          ]
         }
       ],
-      "expected_missing_provisions": ["SECURITY_DEPOSIT_RETURN"],
+      "expected_missing_provisions": [
+        "SECURITY_DEPOSIT_RETURN"
+      ],
       "notes": "Under-stamped + unregistered 2-year lease + 500% Section 74 penalty."
     },
     {
@@ -570,10 +708,15 @@
           "clause_number": "3",
           "expected_severity": "HIGH",
           "expected_statutory_status": "VOID_AB_INITIO",
-          "expected_law_keywords": ["27", "Contract Act"]
+          "expected_law_keywords": [
+            "27",
+            "Contract Act"
+          ]
         }
       ],
-      "expected_missing_provisions": ["STANDARD_EXCLUSIONS"],
+      "expected_missing_provisions": [
+        "STANDARD_EXCLUSIONS"
+      ],
       "notes": "Overbroad NDA restraint blocking general skill employment."
     },
     {
@@ -603,13 +746,21 @@
           "clause_number": "11",
           "expected_severity": "HIGH",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["28", "Contract Act", "jurisdiction"]
+          "expected_law_keywords": [
+            "28",
+            "Contract Act",
+            "jurisdiction"
+          ]
         },
         {
           "clause_number": "12",
           "expected_severity": "HIGH",
           "expected_statutory_status": "VOID_AB_INITIO",
-          "expected_law_keywords": ["Contract Act", "fraud", "23"]
+          "expected_law_keywords": [
+            "Contract Act",
+            "fraud",
+            "23"
+          ]
         }
       ],
       "expected_missing_provisions": [],
@@ -637,7 +788,10 @@
           "clause_number": "1",
           "expected_severity": "MODERATE",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["RULE-HR-04", "Playbook"]
+          "expected_law_keywords": [
+            "RULE-HR-04",
+            "Playbook"
+          ]
         }
       ],
       "expected_missing_provisions": [],
@@ -657,16 +811,25 @@
           "clause_number": "6",
           "expected_severity": "MODERATE",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["auto-renewal", "notice"]
+          "expected_law_keywords": [
+            "auto-renewal",
+            "notice"
+          ]
         },
         {
           "clause_number": "7",
           "expected_severity": "HIGH",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["data", "Cyber Security"]
+          "expected_law_keywords": [
+            "data",
+            "Cyber Security"
+          ]
         }
       ],
-      "expected_missing_provisions": ["IP_ASSIGNMENT", "DATA_BREACH_NOTICE"],
+      "expected_missing_provisions": [
+        "IP_ASSIGNMENT",
+        "DATA_BREACH_NOTICE"
+      ],
       "notes": "Data lock-in / deletion without export window + predatory auto-renewal."
     },
     {
@@ -683,19 +846,33 @@
           "clause_number": "3",
           "expected_severity": "HIGH",
           "expected_statutory_status": "REGULATORY_NON_COMPLIANT",
-          "expected_law_keywords": ["Transfer of Property", "55", "Muslim", "co-heir", "inheritance"]
+          "expected_law_keywords": [
+            "Transfer of Property",
+            "55",
+            "Muslim",
+            "co-heir",
+            "inheritance"
+          ]
         },
         {
           "clause_number": "5",
           "expected_severity": "HIGH",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["Transfer of Property", "55", "encumbrance"]
+          "expected_law_keywords": [
+            "Transfer of Property",
+            "55",
+            "encumbrance"
+          ]
         },
         {
           "clause_number": "11",
           "expected_severity": "HIGH",
           "expected_statutory_status": "STATUTORILY_RESTRICTED",
-          "expected_law_keywords": ["74", "Contract Act", "Specific Relief"]
+          "expected_law_keywords": [
+            "74",
+            "Contract Act",
+            "Specific Relief"
+          ]
         }
       ],
       "expected_missing_provisions": [],
@@ -786,47 +963,147 @@
           "clause_number": "3",
           "expected_severity": "HIGH",
           "expected_statutory_status": "STATUTORILY_RESTRICTED",
-          "expected_law_keywords": ["74", "Contract Act", "RULE-CP-003"]
+          "expected_law_keywords": [
+            "74",
+            "Contract Act",
+            "RULE-CP-003"
+          ]
         },
         {
           "clause_number": "5",
           "expected_severity": "HIGH",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["Copyright", "RULE-CP-008"]
+          "expected_law_keywords": [
+            "Copyright",
+            "RULE-CP-008"
+          ]
         },
         {
           "clause_number": "6",
           "expected_severity": "HIGH",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["RULE-CP-007", "Confidentiality"]
+          "expected_law_keywords": [
+            "RULE-CP-007",
+            "Confidentiality"
+          ]
         },
         {
           "clause_number": "7",
           "expected_severity": "HIGH",
           "expected_statutory_status": "REGULATORY_NON_COMPLIANT",
-          "expected_law_keywords": ["Cyber Security", "RULE-CP-007"]
+          "expected_law_keywords": [
+            "Cyber Security",
+            "RULE-CP-007"
+          ]
         },
         {
           "clause_number": "8",
           "expected_severity": "MODERATE",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["RULE-CP-009", "60 days"]
+          "expected_law_keywords": [
+            "RULE-CP-009",
+            "60 days"
+          ]
         },
         {
           "clause_number": "9",
           "expected_severity": "HIGH",
           "expected_statutory_status": "COMMERCIAL_ISSUE",
-          "expected_law_keywords": ["RULE-CP-006", "50,000"]
+          "expected_law_keywords": [
+            "RULE-CP-006",
+            "50,000"
+          ]
         },
         {
           "clause_number": "11",
           "expected_severity": "HIGH",
           "expected_statutory_status": "STATUTORILY_RESTRICTED",
-          "expected_law_keywords": ["64", "65", "Contract Act", "RULE-CP-005"]
+          "expected_law_keywords": [
+            "64",
+            "65",
+            "Contract Act",
+            "RULE-CP-005"
+          ]
         }
       ],
-      "expected_missing_provisions": ["THIRD_PARTY_OSS_WARRANTY", "ACCEPTANCE_TESTING_CRITERIA"],
+      "expected_missing_provisions": [
+        "THIRD_PARTY_OSS_WARRANTY",
+        "ACCEPTANCE_TESTING_CRITERIA"
+      ],
       "notes": "Real 5-page English Software Agreement (SDA-2026-011) audited against both Bangladesh Law and the real Nexora Corporate Contract Governance Playbook (NEX-CP-001)."
+    },
+    {
+      "id": "CON-TECH-011",
+      "contract_title": "Nexora-ByteCraft Cloud SaaS Subscription and Services Agreement (Compliant Baseline)",
+      "domain": "TECH_SAAS_VENDOR",
+      "audited_for": "CLIENT",
+      "context_length": "LONG",
+      "contract_text": "CLOUD SAAS SUBSCRIPTION AND SERVICES AGREEMENT\n\n1. PARTIES AND SCOPE\nThis Agreement is made between Nexora Digital Solutions Ltd (Vendor) and ByteCraft Ltd (Client) for subscription to the Vendor's cloud-based inventory management SaaS platform, including implementation and support services.\n\n2. TERM\nThe initial term is twenty-four (24) months from the Effective Date. Renewal requires mutual written consent of both parties.\n\n3. FEES AND ADVANCE PAYMENT\nClient shall pay BDT 40,000 per month, due within thirty (30) days of invoice. An advance payment of two (2) months' fees is collected at execution. Any advance payment covering unperformed services shall be refunded proportionally to the Client upon termination, in accordance with Sections 64 and 65 of the Contract Act, 1872.\n\n4. IMPLEMENTATION AND ACCEPTANCE TESTING\nThe Vendor shall complete implementation within forty-five (45) days. The Client has a User Acceptance Testing (UAT) window of fifteen (15) days and shall issue a rejection notice within five (5) business days of each defect report. The Vendor has a remedy period of ten (10) business days per rejected deliverable.\n\n5. INTELLECTUAL PROPERTY\nAll custom source code and deliverables developed specifically for the Client are assigned to the Client, which becomes the first owner of copyright under the Copyright Act, 2023. The Vendor retains ownership of its underlying platform and grants the Client a non-exclusive licence for the term.\n\n6. OPEN SOURCE COMPONENTS\nThe Vendor warrants that deliverables contain no copyleft (GPL) contamination and shall disclose all open-source components with licences. The Vendor shall indemnify the Client against third-party claims arising from undisclosed open-source usage.\n\n7. DATA PROTECTION AND BREACH NOTICE\nThe Vendor shall notify the Client within seventy-two (72) hours of becoming aware of any personal data breach affecting platform data, consistent with the obligations of the Personal Data Protection Act, 2026, and shall cooperate in remediation.\n\n8. MUTUAL INDEMNITY\nThe Vendor shall indemnify and hold harmless the Client against third-party patent or copyright infringement claims arising from the deliverables. The Client shall indemnify the Vendor against claims arising from data the Client supplies to the platform.\n\n9. CONFIDENTIALITY\nEach party shall keep the other's confidential information secret during the term and for three (3) years after termination.\n\n10. LIMITATION OF LIABILITY\nEach party's aggregate liability is capped at the total fees paid in the preceding twelve (12) months. This cap does not apply to wilful misconduct or breach of confidentiality.\n\n11. TERMINATION\nEither party may terminate for convenience with sixty (60) days written notice. Upon termination the Vendor shall refund any unearned advance payment and the Client shall pay fees accrued to the effective date.\n\n12. GOVERNING LAW AND DISPUTE RESOLUTION\nThis Agreement is governed by the laws of Bangladesh. Disputes shall be referred to arbitration under the Arbitration Act, 2001, seated in Dhaka, before a sole arbitrator.\n\nSIGNED for and on behalf of the parties hereto.",
+      "expected_overall_risk": "LOW",
+      "expected_violations": [],
+      "expected_missing_provisions": [],
+      "playbook_rules": [],
+      "notes": "Compliant full-contract baseline (false-positive test): all TECH_SAAS mandatory provisions present; 12-month liability cap and 60-day termination are lawful commercial terms that must NOT be flagged HIGH. Exercises full segmentation + coverage-fill + synthesis path."
+    },
+    {
+      "id": "CON-PROC-001",
+      "contract_title": "Delta-Meridian Industrial Equipment Supply and Installation Contract (Statutory Traps)",
+      "domain": "PROCUREMENT_SUPPLY",
+      "audited_for": "CLIENT",
+      "context_length": "LONG",
+      "contract_text": "INDUSTRIAL EQUIPMENT SUPPLY AND INSTALLATION CONTRACT\n\n1. PARTIES AND SCOPE\nDelta Engineering Works Ltd (Supplier) shall supply, install and commission three industrial boilers for Meridian Textiles Mills Ltd (Buyer) at the Buyer's Gazipur plant, for a total contract value of BDT 2,40,00,000.\n\n2. DELIVERY SCHEDULE\nDelivery and installation shall be completed within one hundred eighty (180) days of the Effective Date, in the milestones stated in Schedule A.\n\n3. INSPECTION, REJECTION AND REFUND\nThe Buyer shall inspect goods within fourteen (14) days of each delivery and may issue a rejection notice for defective goods within that window. The Supplier shall refund the advance payment attributable to rejected goods within fifteen (15) days, consistent with the Sale of Goods Act, 1930 and Section 65 of the Contract Act, 1872.\n\n4. LIQUIDATED DAMAGES\nIf the Supplier fails to meet any milestone, the Supplier shall pay the Buyer liquidated damages at five percent (5%) of the total contract value per day of delay, with no ceiling on the aggregate amount payable.\n\n5. FORCE MAJEURE\nNeither party is liable for delay caused by events beyond its reasonable control; the affected milestone shall be extended for the duration of such event upon prompt notice.\n\n6. NON-COMPETE\nThe Supplier shall not, for a period of three (3) years after completion or termination of this Contract, directly or indirectly supply, install or service industrial boilers to any textile mill operating in Bangladesh.\n\n7. ADVANCE PAYMENT\nThe Buyer shall pay an advance of twenty percent (20%) on signing, adjusted against milestones; any advance relating to deliveries not commenced shall be refunded on termination.\n\n8. TERMINATION\nThe Buyer may terminate for convenience on thirty (30) days written notice, paying only for work performed; termination for material breach is effective on notice.\n\n9. WARRANTY\nThe Supplier warrants the equipment against defects for twelve (12) months from commissioning and shall repair or replace defective parts at its own cost.\n\n10. GOVERNING LAW AND DISPUTE RESOLUTION\nThis Contract is governed by the laws of Bangladesh. Disputes shall be referred to arbitration under the Arbitration Act, 2001, seated in Dhaka.\n\nSIGNED for and on behalf of the parties hereto.",
+      "expected_overall_risk": "HIGH",
+      "expected_violations": [
+        {
+          "clause_number": "4",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "STATUTORILY_RESTRICTED",
+          "expected_law_keywords": [
+            "74",
+            "Contract Act"
+          ],
+          "rationale": "Uncapped 5%/day LD on total contract value is a penal bond under s.74; Bangladesh courts treat wildly disproportionate LD as unenforceable beyond reasonable compensation (s.73)."
+        },
+        {
+          "clause_number": "6",
+          "expected_severity": "HIGH",
+          "expected_statutory_status": "VOID_AB_INITIO",
+          "expected_law_keywords": [
+            "27",
+            "Contract Act"
+          ],
+          "rationale": "3-year post-termination industry-wide non-compete is void ab initio under s.27 Contract Act, 1872 (restraint of lawful trade)."
+        }
+      ],
+      "expected_missing_provisions": [],
+      "playbook_rules": [],
+      "notes": "Full-length HIGH baseline for PROCUREMENT_SUPPLY: two defensible statutory traps (s.74 uncapped 5%/day LD, s.27 post-termination non-compete). Inspection/refund and arbitration clauses present so missing-provision gold stays empty."
+    },
+    {
+      "id": "CON-EMP-008",
+      "contract_title": "GrandTech Permanent Employment Agreement (Compliant Baseline)",
+      "domain": "EMPLOYMENT_SERVICE",
+      "audited_for": "CLIENT",
+      "context_length": "LONG",
+      "contract_text": "EMPLOYMENT AGREEMENT (PERMANENT APPOINTMENT)\n\n1. PARTIES AND APPOINTMENT\nGrandTech Bangladesh Ltd (Employer) appoints Ms. Rehana Karim (Employee) to the position of Software Engineer on a permanent basis, reporting to the Head of Engineering.\n\n2. PROBATION PERIOD\nThe Employee shall serve a probation period of six (6) months. Confirmation shall be issued in writing upon satisfactory completion.\n\n3. REMUNERATION\nThe Employee's gross monthly salary is BDT 90,000, payable by the 7th day of each calendar month, subject to statutory deductions.\n\n4. WORKING HOURS AND LEAVE\nWorking hours are eight (8) hours per day and forty-eight (48) hours per week in accordance with the Bangladesh Labour Act, 2006. The Employee earns earned leave at one day per eighteen (18) days worked, and casual and sick leave as provided by the Labour Act.\n\n5. TERMINATION NOTICE AND SEVERANCE\nEither party may terminate this employment by one hundred twenty (120) days written notice or wages in lieu of notice, in line with Section 26 of the Bangladesh Labour Act, 2006. Termination by the Employer for misconduct shall follow a documented opportunity for the Employee to show cause before the Labour Court or the Employer's disciplinary process, as applicable.\n\n6. PROVIDENT FUND AND GRATUITY\nThe Employee shall be enrolled in the Employer's approved provident fund. Gratuity shall be paid at thirty (30) days' wages for every completed year of service in accordance with Sections 27 and 28 of the Bangladesh Labour Act, 2006, together with all terminal benefits.\n\n7. CONFIDENTIALITY AND RESTRAINT OF TRADE\nDuring employment the Employee shall not, without written consent, engage in any competing business or accept conflicting engagements. The parties acknowledge that any restraint of trade extending beyond the employment term is void under Section 27 of the Contract Act, 1872; post-employment obligations are therefore limited to confidentiality of the Employer's genuine trade secrets under this Agreement's confidentiality terms.\n\n8. RETURN OF PROPERTY\nUpon separation the Employee shall return all Employer property, credentials and data in the Employee's possession.\n\n9. GOVERNING LAW AND DISPUTES\nThis Agreement is governed by the laws of Bangladesh. Employment disputes shall be raised before the competent Labour Court, Dhaka.\n\nSIGNED for and on behalf of the parties hereto.",
+      "expected_overall_risk": "LOW",
+      "expected_violations": [],
+      "expected_missing_provisions": [],
+      "playbook_rules": [],
+      "notes": "Compliant employment baseline: 120-day notice per Labour Act s.26, gratuity/PF per ss.27-28, restraint confined to employment term with express s.27 acknowledgement (post-employment non-compete is void; only trade-secret confidentiality survives). Must NOT be flagged HIGH."
+    },
+    {
+      "id": "CON-LEASE-006",
+      "contract_title": "Harbour-Dhaka Traders Commercial Lease, 11 Months (Compliant Baseline)",
+      "domain": "COMMERCIAL_LEASE",
+      "audited_for": "CLIENT",
+      "context_length": "LONG",
+      "contract_text": "COMMERCIAL PREMISES LEASE AGREEMENT (ELEVEN MONTHS)\n\n1. PARTIES AND PREMISES\nHarbour Properties Ltd (Landlord) leases office space measuring 2,400 sq. ft. at House 12, Road 5, Gulshan-2, Dhaka (Premises) to Dhaka Traders Ltd (Tenant).\n\n2. TERM\nThe lease term is eleven (11) months, commencing 01 January 2027 and ending 30 November 2027, unless terminated earlier under Clause 8.\n\n3. RENT\nMonthly rent is BDT 1,20,000 payable by the 5th day of each month. No escalation applies within the term.\n\n4. SECURITY DEPOSIT\nThe Tenant has paid a security deposit of three (3) months' rent. The Landlord shall refund the security deposit within thirty (30) days of handover, after itemized deductions only for actual unpaid rent or documented damage beyond fair wear and tear. Deductions shall be supported by invoices or a joint inspection report.\n\n5. STAMP DUTY AND REGISTRATION\nThis lease is executed on non-judicial stamp paper of the requisite value under the Stamp Act, 1899. The parties shall present this lease for registration at the sub-registry office under the Registration Act, 1908, so that it remains admissible in evidence, notwithstanding the term being under one year.\n\n6. MAINTENANCE AND UTILITIES\nThe Landlord maintains structure and common services; the Tenant pays utilities and keeps the Premises in good order.\n\n7. USE OF PREMISES\nThe Premises shall be used solely as a trading office. No hazardous or unlawful activity is permitted.\n\n8. TERMINATION\nEither party may terminate by sixty (60) days written notice. Early termination by the Tenant forfeits no deposit beyond Clause 4 deductions.\n\n9. DISPUTE RESOLUTION\nDisputes shall first be settled by negotiation, failing which by arbitration under the Arbitration Act, 2001, seated in Dhaka. Governing law is Bangladesh.\n\nSIGNED for and on behalf of the parties hereto.",
+      "expected_overall_risk": "LOW",
+      "expected_violations": [],
+      "expected_missing_provisions": [],
+      "playbook_rules": [],
+      "notes": "Compliant lease baseline: 11-month term, deposit refund with itemized deductions (no forfeiture), stamp duty + sub-registry registration clause. Must NOT be flagged HIGH."
     }
   ]
 }
