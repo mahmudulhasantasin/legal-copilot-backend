@@ -90,9 +90,12 @@ def build_llm_from_profile(profile_name: str, profile: Dict[str, Any]):
     timeout_sec = float(profile.get("timeout_sec", 60.0))
 
     if provider == "app_default":
-        llm = lp._build_default_llm()
+        # Production LLM chain (Gemini -> Z.ai GLM -> Groq) exactly as deployed.
+        llm = lp.get_llm()
         if llm is None:
-            raise RuntimeError("No GEMINI_API_KEY or GROQ_API_KEY found for default_production.")
+            raise RuntimeError(
+                "No GEMINI_API_KEY / ZAI_API_KEY / GROQ_API_KEY found for default_production."
+            )
         return llm
 
     if provider == "google_genai":

@@ -218,6 +218,12 @@ class ResetPasswordRequest(BaseModel):
 
 
 
+class DemoLoginRequest(BaseModel):
+
+    role: str = Field(..., description="general | lawyer | enterprise_admin | admin")
+
+
+
 class Token(BaseModel):
 
     access_token: str
@@ -967,6 +973,143 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     await update_last_login(db, user)
 
     return _issue_token(user)
+
+
+
+@router.post("/demo-login", response_model=Token)
+async def demo_login(payload: DemoLoginRequest, db: AsyncSession = Depends(get_db)):
+    """Fast-access demo authentication for hackathon judges and evaluators.
+    Issues a valid, signed JWT token and auto-provisions or activates the demo profile.
+    """
+    role_key = (payload.role or "").strip().lower()
+
+    if role_key in ("general", "client", "freelancer", "sme"):
+        target_role = UserRole.GENERAL
+        target_email = "demo.general@contractmind.ai"
+        target_name = "Tariqul Islam (Demo Citizen/SME)"
+        target_credits = 500
+        target_tier = SubscriptionTier.PRO
+    elif role_key in ("lawyer", "advocate"):
+        target_role = UserRole.LAWYER
+        target_email = "advocate.tanvir@supremecourt.bd"
+        target_name = "Advocate Tanvir Ahmed (Demo Lawyer)"
+        target_credits = 100
+        target_tier = SubscriptionTier.PRO
+    elif role_key in ("enterprise_admin", "company", "enterprise", "enterprise-admin"):
+        target_role = UserRole.ENTERPRISE_ADMIN
+        target_email = "legal.director@grameenphone.com"
+        target_name = "Kazi Farhan (Demo Enterprise Admin)"
+        target_credits = 0
+        target_tier = SubscriptionTier.ENTERPRISE
+    elif role_key in ("admin", "superadmin", "super_admin", "system_admin"):
+        target_role = UserRole.ADMIN
+        target_email = "superadmin@contractmind.ai"
+        target_name = "System Administrator (Demo SuperAdmin)"
+        target_credits = 99999
+        target_tier = SubscriptionTier.ENTERPRISE
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported demo role: '{payload.role}'. Supported roles: general, lawyer, enterprise_admin, admin."
+        )
+
+    user = await _get_user_by_email(db, target_email)
+    if not user:
+        user = User(
+            email=target_email,
+            hashed_password=f"DEMO_SEALED${get_password_hash(secrets.token_urlsafe(32))}",
+            full_name=target_name,
+            role=target_role,
+            subscription_tier=target_tier,
+            credit_balance=target_credits,
+            is_active=True,
+            is_verified=True,
+        )
+        db.add(user)
+        await db.flush()
+
+        if target_role == UserRole.LAWYER:
+            lp_stmt = select(LawyerProfile).where(LawyerProfile.user_id == user.id)
+            existing_lp = (await db.execute(lp_stmt)).scalar_one_or_none()
+            if not existing_lp:
+                lp = LawyerProfile(
+                    user_id=user.id,
+                    bar_council_id="BC-48291/2019",
+                    experience_years=8,
+                    specializations=["Corporate & Labour Law", "Commercial Contracts", "Arbitration"],
+                    status=LawyerStatus.APPROVED,
+                )
+                db.add(lp)
+        elif target_role == UserRole.ENTERPRISE_ADMIN:
+            ent_stmt = select(Enterprise).where(Enterprise.name == "Grameenphone Ltd (Demo)")
+            existing_ent = (await db.execute(ent_stmt)).scalar_one_or_none()
+            if not existing_ent:
+                ent = Enterprise(
+                    name="Grameenphone Ltd (Demo)",
+                    domain="grameenphone.com",
+                    company_type="Public Limited",
+                    registration_no="C-148920/2021",
+                    tin_no="582910482912",
+                    status=EnterpriseStatus.APPROVED,
+                    credit_balance=5000,
+                    referral_code="GP-LEGAL-2026",
+                )
+                db.add(ent)
+                await db.flush()
+                user.enterprise_id = ent.id
+            else:
+                user.enterprise_id = existing_ent.id
+
+        await db.commit()
+        await db.refresh(user)
+        logger.info(f"[AUTH] Auto-provisioned demo user {user.email} with role {user.role.value}")
+    else:
+        user.is_active = True
+        user.is_verified = True
+        user.role = target_role
+        if target_role == UserRole.GENERAL and user.credit_balance < 50:
+            user.credit_balance = 500
+        elif target_role == UserRole.ADMIN and user.credit_balance < 1000:
+            user.credit_balance = 99999
+
+        if target_role == UserRole.LAWYER:
+            lp_stmt = select(LawyerProfile).where(LawyerProfile.user_id == user.id)
+            existing_lp = (await db.execute(lp_stmt)).scalar_one_or_none()
+            if not existing_lp:
+                lp = LawyerProfile(
+                    user_id=user.id,
+                    bar_council_id="BC-48291/2019",
+                    experience_years=8,
+                    specializations=["Corporate & Labour Law", "Commercial Contracts"],
+                    status=LawyerStatus.APPROVED,
+                )
+                db.add(lp)
+            elif existing_lp.status != LawyerStatus.APPROVED:
+                existing_lp.status = LawyerStatus.APPROVED
+
+        elif target_role == UserRole.ENTERPRISE_ADMIN and not user.enterprise_id:
+            ent_stmt = select(Enterprise).where(Enterprise.name == "Grameenphone Ltd (Demo)")
+            existing_ent = (await db.execute(ent_stmt)).scalar_one_or_none()
+            if not existing_ent:
+                ent = Enterprise(
+                    name="Grameenphone Ltd (Demo)",
+                    domain="grameenphone.com",
+                    status=EnterpriseStatus.APPROVED,
+                    credit_balance=5000,
+                    referral_code="GP-LEGAL-2026",
+                )
+                db.add(ent)
+                await db.flush()
+                user.enterprise_id = ent.id
+            else:
+                user.enterprise_id = existing_ent.id
+
+        await db.commit()
+        await db.refresh(user)
+
+    await update_last_login(db, user)
+    return _issue_token(user)
+
 
 
 

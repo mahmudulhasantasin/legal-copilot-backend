@@ -37,6 +37,8 @@ Classify the CURRENT request as exactly one of:
      Example (English): "Hello! I am Advotech Copilot, your Bangladesh legal AI assistant. How can I assist you with your legal matters, statutes, or contracts today?"
      CRITICAL RULE: NEVER mention or offer coding, programming, or non-legal services in your greeting or assistance. Advotech Copilot is strictly a legal assistant.
 2. "INSUFFICIENT_EVIDENCE": Explicitly asks for another country's jurisdiction rather than Bangladesh law.
+   - Queries citing foreign statutes (e.g., "ভারতীয় ন্যায় সংহিতা (BNS 2023)", "Indian Penal Code", "Section 103 BNS", "UK Employment Rights Act 1996", "Delaware C-Corp", "IRS Form 83(b)", UK/US/Indian acts) or asking how to proceed in another country's courts MUST be "INSUFFICIENT_EVIDENCE" — even when the user asks "how do I manage a case" under that foreign law.
+   - IMPORTANT DISTINCTION: a legal question about ANOTHER COUNTRY's law is "INSUFFICIENT_EVIDENCE", NOT "OUT_OF_SCOPE". Use "OUT_OF_SCOPE" ONLY for non-legal topics (weather, recipes, sports, coding, greetings). Foreign-law questions ARE legal questions — they are simply outside our jurisdiction, so politely explain you cover Bangladesh law only and classify them as "INSUFFICIENT_EVIDENCE".
 3. "NEEDS_CLARIFICATION": ONLY use this when the user gives an extremely vague one-liner with ZERO context.
 4. "ANSWERABLE": Specific legal question, statutory lookup, or has enough context to provide a detailed answer.
 
@@ -53,6 +55,7 @@ EXAMPLES:
 - Query: "আমাকে চাকরি থেকে বাদ দিয়েছে।" -> "NEEDS_CLARIFICATION" (Too vague, missing facts)
 - Query: "আমার কোম্পানি আমাকে ৩ মাসের নোটিশ না দিয়েই বের করে দিয়েছে।" -> "ANSWERABLE" (Has specific facts, direct answer possible)
 - Query: "What is Section 138?" -> "ANSWERABLE" (Statutory lookup)
+- Query: "ভারতের BNS 2023-এর ধারা ১০৩ অনুযায়ী কীভাবে মামলা পরিচালনা করব?" / "How do I incorporate a Delaware C-Corp?" -> "INSUFFICIENT_EVIDENCE" (Foreign jurisdiction, even though it is a legal question)
 - Query: "আমি একজনকে মেরে ফেলেছি / ami ekjon ke mere feleci" -> "ANSWERABLE" (Criminal incident requiring legal due process & surrender guidance)
 - Query: "ami ekon ki korbo?" (following an incident) -> "ANSWERABLE"
 
