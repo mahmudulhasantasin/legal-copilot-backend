@@ -8,7 +8,7 @@ from typing import Optional, List
 
 
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
 
 from sqlalchemy import select, func
 
@@ -23,6 +23,8 @@ from google.auth.transport import requests as google_requests
 
 
 from app.core.database import get_db
+
+from app.core.rate_limit import check_rate_limit, client_ip
 
 from app.core.security import (
 
@@ -412,27 +414,99 @@ async def _get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
 
 
 
-def _check_otp(user: User, otp_code: str) -> None:
+async def _check_otp_with_lockout(db: AsyncSession, user: User, otp_code: str) -> None:
 
-    if not user.otp_code or user.otp_code != otp_code.strip():
+    """OTP verification with brute-force protection (SEC-AUTH-01).
 
-        raise HTTPException(400, "Invalid OTP code.")
-
-    if not user.otp_expires_at:
-
-        raise HTTPException(400, "OTP expired. Request a new one.")
+    Counts failed attempts; after settings.OTP_MAX_ATTEMPTS failures the OTP is
+    invalidated and verification locks for settings.OTP_LOCKOUT_MINUTES minutes.
+    """
 
     now = datetime.now(timezone.utc)
 
-    exp = user.otp_expires_at
+    # Lockout window active?
+    locked_until = user.otp_locked_until
 
-    if exp.tzinfo is None:
+    if locked_until:
 
-        exp = exp.replace(tzinfo=timezone.utc)
+        if locked_until.tzinfo is None:
 
-    if exp < now:
+            locked_until = locked_until.replace(tzinfo=timezone.utc)
 
-        raise HTTPException(400, "OTP expired. Request a new one.")
+        if locked_until > now:
+
+            mins_left = max(1, int((locked_until - now).total_seconds() // 60) + 1)
+
+            raise HTTPException(
+
+                423,
+
+                f"Too many failed OTP attempts. Verification is locked. Try again in {mins_left} minute(s).",
+
+            )
+
+        # Lock expired — clear it and let the user try again
+
+        user.otp_locked_until = None
+
+    code_ok = user.otp_code is not None and user.otp_code == otp_code.strip()
+
+    exp_ok = False
+
+    if user.otp_expires_at:
+
+        exp = user.otp_expires_at
+
+        if exp.tzinfo is None:
+
+            exp = exp.replace(tzinfo=timezone.utc)
+
+        exp_ok = exp >= now
+
+    if not code_ok:
+
+        user.otp_failed_attempts = (user.otp_failed_attempts or 0) + 1
+
+        return await _register_otp_failure(db, user)
+
+    if not exp_ok:
+
+        user.otp_failed_attempts = (user.otp_failed_attempts or 0) + 1
+
+        return await _register_otp_failure(db, user, expired=True)
+
+    # Success — reset the attempt counter
+
+    user.otp_failed_attempts = 0
+
+
+async def _register_otp_failure(db: AsyncSession, user: User, expired: bool = False) -> None:
+
+    if user.otp_failed_attempts >= settings.OTP_MAX_ATTEMPTS:
+
+        user.otp_code = None
+
+        user.otp_expires_at = None
+
+        user.otp_locked_until = datetime.now(timezone.utc) + timedelta(minutes=settings.OTP_LOCKOUT_MINUTES)
+
+        await db.commit()
+
+        raise HTTPException(
+
+            423,
+
+            f"Too many failed OTP attempts. Verification is locked for {settings.OTP_LOCKOUT_MINUTES} minutes. Request a new OTP afterwards.",
+
+        )
+
+    await db.commit()
+
+    remaining = settings.OTP_MAX_ATTEMPTS - user.otp_failed_attempts
+
+    message = "OTP expired. Request a new one." if expired else "Invalid OTP code."
+
+    raise HTTPException(400, f"{message} {remaining} attempt(s) remaining before lockout.")
 
 
 
@@ -443,6 +517,12 @@ async def _send_and_store_otp(db: AsyncSession, user: User, background_tasks: Ba
     user.otp_code = otp
 
     user.otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES)
+
+    # New OTP → fresh attempt counter and no lock
+
+    user.otp_failed_attempts = 0
+
+    user.otp_locked_until = None
 
     await db.commit()
 
@@ -466,9 +546,23 @@ async def register_with_email(
 
     background_tasks: BackgroundTasks,
 
+    request: Request,
+
     db: AsyncSession = Depends(get_db),
 
 ):
+
+    check_rate_limit(
+
+        f"register:{client_ip(request)}",
+
+        max_requests=5,
+
+        window_seconds=60,
+
+        detail="Too many registration attempts. Please try again in a minute.",
+
+    )
 
     email = payload.email.lower().strip()
 
@@ -540,11 +634,13 @@ async def verify_otp(payload: VerifyOtpRequest, db: AsyncSession = Depends(get_d
 
 
 
-    _check_otp(user, payload.otp_code)
+    await _check_otp_with_lockout(db, user, payload.otp_code)
 
     user.otp_code = None
 
     user.otp_expires_at = None
+
+    user.otp_locked_until = None
 
 
 
@@ -576,7 +672,19 @@ async def verify_otp(payload: VerifyOtpRequest, db: AsyncSession = Depends(get_d
 
 @router.post("/resend-otp")
 
-async def resend_otp(payload: ResendOtpRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+async def resend_otp(payload: ResendOtpRequest, background_tasks: BackgroundTasks, request: Request, db: AsyncSession = Depends(get_db)):
+
+    check_rate_limit(
+
+        f"otp-resend:{client_ip(request)}:{payload.email.lower().strip()}",
+
+        max_requests=5,
+
+        window_seconds=60,
+
+        detail="Too many OTP resend requests. Please try again in a minute.",
+
+    )
 
     user = await _get_user_by_email(db, payload.email)
 
@@ -608,6 +716,8 @@ async def forgot_password(
 
     background_tasks: BackgroundTasks,
 
+    request: Request,
+
     db: AsyncSession = Depends(get_db),
 
 ):
@@ -619,6 +729,18 @@ async def forgot_password(
     Returns 200 even if email doesn't exist (prevents account enumeration).
 
     """
+
+    check_rate_limit(
+
+        f"forgot-password:{client_ip(request)}:{payload.email.lower().strip()}",
+
+        max_requests=5,
+
+        window_seconds=60,
+
+        detail="Too many password reset requests. Please try again in a minute.",
+
+    )
 
     user = await _get_user_by_email(db, payload.email)
 
@@ -657,6 +779,12 @@ async def forgot_password(
     user.otp_code = otp
 
     user.otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES)
+
+    # New OTP → fresh attempt counter and no lock (SEC-AUTH-01)
+
+    user.otp_failed_attempts = 0
+
+    user.otp_locked_until = None
 
     await db.commit()
 
@@ -702,13 +830,15 @@ async def reset_password(
 
 
 
-    _check_otp(user, payload.otp_code)
+    await _check_otp_with_lockout(db, user, payload.otp_code)
 
 
 
     user.otp_code = None
 
     user.otp_expires_at = None
+
+    user.otp_locked_until = None
 
     user.hashed_password = get_password_hash(payload.new_password)
 

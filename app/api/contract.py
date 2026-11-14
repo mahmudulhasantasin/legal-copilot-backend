@@ -15,6 +15,7 @@ from supabase import create_client, Client
 
 from app.config import settings
 from app.core.database import get_db
+from app.core.uploads import read_upload_limited
 from app.core.security import get_current_user, check_and_deduct_credits, refund_credits
 from app.core.pricing import get_audit_cost, get_service_cost, get_lawyer_verification_split
 from app.models.user import User, UserRole, CreditTxType
@@ -158,17 +159,11 @@ async def upload_and_audit(
     if ext not in allowed_types:
         raise HTTPException(400, f"Unsupported file format. Allowed: {', '.join(allowed_types)}")
 
-    MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
-
-    # ফাইল সাইস চেক — credit deduct হওয়ার আগে
-    file_bytes = await file.read()
+    # ফাইল সাইস চেক — credit deduct হওয়ার আগে। Chunked read with hard cap (SEC-DOS-01)
+    MAX_FILE_SIZE_BYTES = settings.MAX_CONTRACT_UPLOAD_MB * 1024 * 1024  # 20 MB default
+    file_bytes = await read_upload_limited(file, MAX_FILE_SIZE_BYTES)
     if len(file_bytes) == 0:
         raise HTTPException(400, "The uploaded file is empty.")
-    if len(file_bytes) > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"File too large. Max 20MB allowed. Your file: {round(len(file_bytes)/(1024*1024),1)}MB."
-        )
 
     cost = get_audit_cost(current_user.role)
     deduction = await check_and_deduct_credits(

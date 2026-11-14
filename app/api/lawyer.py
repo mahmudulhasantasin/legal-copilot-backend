@@ -14,6 +14,7 @@ from supabase import create_client # ✅ NEW
 from app.config import settings # ✅ NEW
 from app.core.database import get_db
 from app.core.security import get_current_user, require_roles
+from app.core.uploads import read_upload_limited, verify_magic_bytes
 from app.core.tier_limits import CONTRACT_REVIEW_LIMITS
 from app.models.user import (
     User, UserRole, CreditTxType, CreditTransaction,
@@ -234,8 +235,18 @@ async def upload_lawyer_proof(
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise HTTPException(500, "Storage not configured")
 
-    ext = os.path.splitext(file.filename)[1].lower()
-    file_bytes = await file.read()
+    # SEC-INJ-01: strict extension whitelist + magic-byte content check
+    ALLOWED_PROOF_TYPES = [".pdf", ".jpg", ".jpeg", ".png"]
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in ALLOWED_PROOF_TYPES:
+        raise HTTPException(400, f"Unsupported proof format. Allowed: {', '.join(ALLOWED_PROOF_TYPES)}")
+
+    # SEC-DOS-01: chunked read with hard cap
+    file_bytes = await read_upload_limited(file, settings.MAX_PROOF_UPLOAD_MB * 1024 * 1024)
+    if len(file_bytes) == 0:
+        raise HTTPException(400, "The uploaded proof file is empty.")
+    if not verify_magic_bytes(file_bytes, ext):
+        raise HTTPException(400, "File content does not match its extension. Upload rejected.")
     
     # Save as: proof/lawyer_{id}_{uuid}.ext
     safe_name = f"proof/lawyer_{lawyer.id}_{uuid.uuid4().hex[:8]}{ext}"

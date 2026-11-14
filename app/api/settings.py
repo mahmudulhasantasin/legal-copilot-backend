@@ -12,6 +12,7 @@ from supabase import create_client, Client
 from app.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_user, verify_password, get_password_hash
+from app.core.uploads import read_upload_limited, verify_magic_bytes
 from app.core.tier_limits import LAWYER_MONTHLY_FREE_CHAT_CREDITS
 from app.models.user import User, UserRole, CompanyRole, MemberApprovalStatus
 from app.models.lawyer import LawyerProfile, LawyerAvailability
@@ -187,7 +188,14 @@ async def upload_profile_photo(
     if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
         raise HTTPException(400, "Only image files are allowed (jpg, png, webp)")
 
-    file_bytes = await file.read()
+    # Chunked read with hard cap (SEC-DOS-01) + content/extension match check (SEC-INJ-01 pattern)
+    max_bytes = settings.MAX_AVATAR_UPLOAD_MB * 1024 * 1024
+    file_bytes = await read_upload_limited(file, max_bytes)
+    if len(file_bytes) == 0:
+        raise HTTPException(400, "The uploaded image is empty.")
+    if not verify_magic_bytes(file_bytes, ext):
+        raise HTTPException(400, "Image content does not match its file type. Upload rejected.")
+
     safe_name = f"avatars/{current_user.id}_{uuid.uuid4().hex[:8]}{ext}"
 
     try:

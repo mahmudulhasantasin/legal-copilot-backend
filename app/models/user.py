@@ -106,6 +106,9 @@ class User(Base):
     # ── OTP / Email Verification ──
     otp_code: Mapped[Optional[str]] = mapped_column(String(6), nullable=True)
     otp_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # SEC-AUTH-01: brute-force protection — failed attempts + lockout window
+    otp_failed_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    otp_locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # ── Subscription ──
     subscription_tier: Mapped[SubscriptionTier] = mapped_column(

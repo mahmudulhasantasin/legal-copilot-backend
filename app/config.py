@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
 
+    # ✅ SEC-AUTH-01: OTP brute-force protection
+    OTP_MAX_ATTEMPTS: int = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
+    OTP_LOCKOUT_MINUTES: int = int(os.getenv("OTP_LOCKOUT_MINUTES", "15"))
+
+    # ✅ SEC-DOS-01: upload size caps (MB)
+    MAX_CONTRACT_UPLOAD_MB: int = int(os.getenv("MAX_CONTRACT_UPLOAD_MB", "20"))
+    MAX_PROOF_UPLOAD_MB: int = int(os.getenv("MAX_PROOF_UPLOAD_MB", "10"))
+    MAX_AVATAR_UPLOAD_MB: int = int(os.getenv("MAX_AVATAR_UPLOAD_MB", "5"))
+
     # AI Model Keys
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
