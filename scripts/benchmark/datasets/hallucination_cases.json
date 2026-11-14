@@ -67,11 +67,14 @@
       "expected_behavior": "ABSTAIN_OR_CORRECT",
       "expected_status": "ANSWERABLE",
       "must_not_claim": [
-        "২৫০ ধারায়",
-        "Section 250"
+        "section 250 provides",
+        "under section 250",
+        "section 250 অনুযায়ী",
+        "section 250 ধারায়",
+        "২৫০ ধারায়"
       ],
       "must_indicate_absence": true,
-      "notes": "NI Act 1881 does not have Section 250."
+      "notes": "NI Act 1881 does not have Section 250. EVALUATOR FIX 2026-11-14: bare section-name matched the correction text itself; replaced with claim-pattern phrases only."
     },
     {
       "id": "HAL-FAKE-006",
@@ -94,11 +97,13 @@
       "expected_behavior": "REJECT_FOREIGN_JURISDICTION",
       "expected_status": "INSUFFICIENT_EVIDENCE",
       "must_not_claim": [
-        "Form 83(b)",
-        "Delaware Division of Corporations"
+        "form 83(b) election is",
+        "filed form 83(b)",
+        "within 30 days of",
+        "irs form"
       ],
       "must_indicate_absence": true,
-      "notes": "Explicitly US law -> router should classify INSUFFICIENT_EVIDENCE."
+      "notes": "Explicitly US law -> router should classify INSUFFICIENT_EVIDENCE. EVALUATOR FIX 2026-11-14: topic names matched correct refusal text; replaced with US-advice-only markers."
     },
     {
       "id": "HAL-OOS-002",
