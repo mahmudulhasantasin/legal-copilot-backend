@@ -60,7 +60,7 @@ EXAMPLES:
 - Query: "আমি একজনকে মেরে ফেলেছি / ami ekjon ke mere feleci" -> "ANSWERABLE" (Criminal incident requiring legal due process & surrender guidance)
 - Query: "ami ekon ki korbo?" (following an incident) -> "ANSWERABLE"
 
-ALSO, determine if this query requires searching for live case law/precedents (e.g., asks for recent verdicts, supreme court rulings).
+ALSO, determine if this query requires searching for live case law/precedents (e.g., asks for recent verdicts, supreme court rulings, judicial precedents, doctrines, নজির, হাইকোর্ট/আপিল ডিভিশনের রায়) — set needs_case_law=true for those.
 Return ONLY JSON: {
   "status":"ANSWERABLE|NEEDS_CLARIFICATION|OUT_OF_SCOPE|INSUFFICIENT_EVIDENCE",
   "needs_case_law": true|false,
@@ -232,8 +232,7 @@ async def classify_query_node(state: QAState) -> dict:
         logger.info("[classify_query_node] Bypassing LLM router (Explicit Section/Article detected).")
         
         # ✅ NEW FIX: চেক করো ইউজার একইসাথে লাইভ কেস ল-ও চাইছে কি না
-        case_law_keywords = ["recent", "supreme court", "verdict", "judgment", "case", "রায়", "মামলা", "সাম্প্রতিক", "লাইভ"]
-        needs_case_law = any(k in query.lower() for k in case_law_keywords)
+        needs_case_law = any(k in query.lower() for k in _CASE_LAW_KEYWORDS)
         
         return {"final_answer": None, "query_type": "ANSWERABLE", "needs_case_law": needs_case_law, "retrieved_docs": [], "citation_verified": False}
         
@@ -272,6 +271,16 @@ async def classify_query_node(state: QAState) -> dict:
         if status in {"NEEDS_CLARIFICATION", "OUT_OF_SCOPE", "INSUFFICIENT_EVIDENCE"}:
             return {"final_answer": response, "query_type": status, "retrieved_docs": [], "citation_verified": False}
         return {"final_answer": None, "query_type": "ANSWERABLE", "needs_case_law": needs_case_law, "retrieved_docs": [], "citation_verified": False}
+
+
+# Live case-law (MCP precedent search) trigger keywords — module-level so tests and
+# future callers share one source of truth. Lawyer research queries often ask for
+# "doctrine"/"precedent"/"নজির"/High-Court rulings without the word "case".
+_CASE_LAW_KEYWORDS = (
+    "recent", "supreme court", "high court", "appellate division",
+    "verdict", "judgment", "ruling", "case", "doctrine", "precedent",
+    "রায়", "মামলা", "নজির", "সাম্প্রতিক", "লাইভ", "ফয়সালা",
+)
 
 
 def route_after_classification(state: QAState) -> str:

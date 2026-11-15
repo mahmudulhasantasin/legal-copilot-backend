@@ -105,6 +105,30 @@ def test_fallback_keeps_bangladesh_section_queries_answerable():
     assert status == "ANSWERABLE"
 
 
+def test_case_law_keywords_trigger_on_doctrine_and_precedent_queries():
+    from app.agents.qa_graph import _CASE_LAW_KEYWORDS
+
+    def _wants_case_law(q: str) -> bool:
+        return any(k in q.lower() for k in _CASE_LAW_KEYWORDS)
+
+    for q in (
+        "High Court er relevant doctrine o dekho",
+        "judicial doctrine ki bole?",
+        "precedent ache kina?",
+        "নজির দরকার",
+        "Appellate Division er ruling ki?",
+        "supreme court er recent judgment",
+    ):
+        assert _wants_case_law(q), q
+
+    for q in (
+        "Section 138 NI Act er shasti koto?",
+        "cheque dishonor er jamin kibhabe hoy?",
+        "The Contract Act 1872 Section 74 ki bole?",
+    ):
+        assert not _wants_case_law(q), q
+
+
 # ── Leak guard + enrichment helpers (SEC-AI-01) ─────────────────────────────
 
 def test_prompt_leak_detected_on_system_prompt_fragment():
