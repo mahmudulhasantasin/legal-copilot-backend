@@ -9,6 +9,7 @@ import time
 import base64
 import asyncio
 import logging
+import re
 import smtplib
 import threading
 import json  # ✅ নতুন যুক্ত করা হয়েছে
@@ -171,19 +172,32 @@ def _send_via_smtp_sync(message: EmailMessage) -> bool:
 # ──────────────────────────────────────────────────────────
 # UNIFIED SENDER
 # ──────────────────────────────────────────────────────────
+# ✅ SEC-DATA-01: OTP / reset codes must never be written to logs in cleartext.
+# Context-aware mask: only 6-digit runs that follow "code is:" / "OTP" / "কোড"
+# phrasing are masked (123456 → 1***56) — amounts like "500000 BDT" untouched.
+_OTP_BODY_RE = re.compile(
+    r"(?i)((?:otp|verification\s+code|reset\s+code|code)\s*(?:is)?\s*[:\-]?\s*)(\d)(\d{3})(\d{2})"
+)
+
+
+def _mask_codes_in_body(body: str) -> str:
+    return _OTP_BODY_RE.sub(r"\1\2***\4", body or "")
+
+
 def _demo_fallback(recipient_email: str, subject: str, body: str) -> None:
+    safe_body = _mask_codes_in_body(body)
     logger.warning("=" * 60)
     logger.warning("🚨 EMAIL FAILED — DEMO FALLBACK ACTIVATED:")
     logger.warning(f"TO: {recipient_email}")
     logger.warning(f"SUBJECT: {subject}")
-    logger.warning(f"BODY:\n{body}")
+    logger.warning(f"BODY:\n{safe_body}")
     logger.warning("=" * 60)
 
     try:
         from datetime import datetime
         with open("demo_emails.log", "a", encoding="utf-8") as f:
             f.write(f"\n[{datetime.now()}] TO: {recipient_email}\n")
-            f.write(f"SUBJECT: {subject}\n{body}\n{'-' * 40}\n")
+            f.write(f"SUBJECT: {subject}\n{safe_body}\n{'-' * 40}\n")
     except Exception:
         pass
 

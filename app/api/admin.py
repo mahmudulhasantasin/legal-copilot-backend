@@ -977,6 +977,8 @@ async def suspend_user(
         raise HTTPException(400, "You cannot suspend yourself.")
 
     user.is_active = False
+    # ✅ SEC-AUTH-03: instantly revoke all sessions of the suspended user
+    user.token_version = int(getattr(user, "token_version", 1) or 1) + 1
     await log_action(
         db, admin, AuditAction.MEMBER_SUSPENDED,
         target_entity="user", target_id=user.id,

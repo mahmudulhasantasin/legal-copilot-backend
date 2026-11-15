@@ -72,6 +72,9 @@ def build_token_payload(user: "User") -> dict:
         "tier": user.subscription_tier.value,
         "ent_id": user.enterprise_id,
         "ver": user.is_verified,
+        # SEC-AUTH-03: token-generation counter — bumping user.token_version
+        # (logout / password change / reset) instantly invalidates older tokens.
+        "tv": int(getattr(user, "token_version", 0) or 1),
     }
 
 
@@ -107,6 +110,17 @@ async def get_current_user(
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Inactive user account.")
 
+    # ✅ SEC-AUTH-03: revoke tokens issued before the user's current token_version
+    # (bumped on logout, password change, and password reset).
+    token_tv = int(payload.get("tv") or 1)
+    current_tv = int(getattr(user, "token_version", 1) or 1)
+    if token_tv != current_tv:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session revoked. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     # ✅ Defence-in-depth — reject stale JWTs belonging to unverified users
     # (covers tokens issued before login Fix was deployed, or manually crafted)
     if not user.is_verified:
@@ -133,7 +147,10 @@ async def get_current_user_optional(
         if not email:
             return None
         stmt = select(User).where(User.email == email, User.is_deleted == False)
-        return (await db.execute(stmt)).scalar_one_or_none()
+        user = (await db.execute(stmt)).scalar_one_or_none()
+        if user and int(payload.get("tv") or 1) != int(getattr(user, "token_version", 1) or 1):
+            return None  # revoked (SEC-AUTH-03)
+        return user
     except Exception:
         return None
 

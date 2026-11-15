@@ -5,9 +5,9 @@
     "default_production": {
       "provider": "app_default",
       "display_name": "Production Default (Gemini 3.5 Flash Lite -> Groq Qwen3.8 Fallback)",
-      "description": "Uses app.services.llm_provider._build_default_llm() exactly as deployed.",
+      "description": "Uses app.services.llm_provider.get_llm() exactly as deployed.",
       "temperature": 0.1,
-      "max_tokens": 3000,
+      "max_tokens": 950,
       "timeout_sec": 60.0
     },
     "gemini_flash_lite": {
@@ -25,7 +25,7 @@
       "api_key_env": "GROQ_API_KEY",
       "display_name": "Groq Qwen 3.8 27B",
       "temperature": 0.1,
-      "max_tokens": 2000,
+      "max_tokens": 950,
       "timeout_sec": 45.0
     },
     "openrouter_custom": {

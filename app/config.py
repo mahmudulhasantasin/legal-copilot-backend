@@ -1,6 +1,7 @@
 import os
 from typing import Optional  # ✅ Optional ইমপোর্ট করা হলো
 from dotenv import load_dotenv
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ✅ override=True যোগ করা হলো যাতে .env ফাইলের নতুন ভ্যালু আগেরগুলোকে ওভাররাইড করতে পারে
@@ -23,6 +24,9 @@ class Settings(BaseSettings):
     EMBED_MODEL: str = os.getenv("EMBED_MODEL", "intfloat/multilingual-e5-small")
 
     # Security & JWT Configuration
+    # ✅ SEC-AUTH-02: "production" environments must set a real SECRET_KEY — the weak
+    # fallback below is only tolerated in development (a warning is logged there).
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     SECRET_KEY: str = os.getenv("SECRET_KEY", "temporary-fallback-secret-key-change-in-env")
     ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
@@ -39,6 +43,8 @@ class Settings(BaseSettings):
     # AI Model Keys
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    # ✅ Groq free tier enforces an OTPM (output tokens/min) cap of 1000 — max_tokens must stay below it
+    GROQ_MAX_TOKENS: int = int(os.getenv("GROQ_MAX_TOKENS", "950"))
     ZAI_API_KEY: str = os.getenv("ZAI_API_KEY", "")
     ZAI_BASE_URL: str = os.getenv("ZAI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/")
     ZAI_MODEL: str = os.getenv("ZAI_MODEL", "glm-4.5-flash")
@@ -72,6 +78,25 @@ class Settings(BaseSettings):
 
     # ✅ Pydantic V2 এর নতুন কনফিগারেশন
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @model_validator(mode="after")
+    def _check_secret_key_for_production(self) -> "Settings":
+        """SEC-AUTH-02: refuse to boot production with the insecure fallback secret."""
+        is_production = (self.ENVIRONMENT or "").strip().lower() in ("production", "prod")
+        if is_production and (
+            not self.SECRET_KEY or self.SECRET_KEY == "temporary-fallback-secret-key-change-in-env"
+        ):
+            raise RuntimeError(
+                "SECRET_KEY is required when ENVIRONMENT=production. "
+                "Set a strong random value (e.g. `python -c \"import secrets; print(secrets.token_urlsafe(64))\"`)."
+            )
+        if self.SECRET_KEY == "temporary-fallback-secret-key-change-in-env":
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "SECRET_KEY falls back to the insecure development default — never use in production."
+            )
+        return self
 
 
 settings = Settings()

@@ -245,9 +245,9 @@
       "must_include_keywords": [
         "সাইবার",
         "ট্রাইব্যুনাল",
-        "জিডি"
+        "ব্ল্যাকমেইল"
       ],
-      "notes": "Cyber Security Act 2023 identity fraud / offensive info. GOLD CORRECTED 2026-11-14: Cyber Security Act 2023 is repealed; system correctly grounds in the in-force Cyber Protection Act 2026."
+      "notes": "Cyber Security Act 2023 identity fraud / offensive info. GOLD CORRECTED 2026-11-14: Cyber Security Act 2023 is repealed; system correctly grounds in the in-force Cyber Protection Act 2026. KEYWORD-CORRECTED 2026-11-15: \"জিডি\" appears NOWHERE in the Cyber Protection Act 2026 (0/52 sections) — police-station procedure term, unfair gold. Replaced with \"ব্ল্যাকমেইল\" (statutory term, Section 25 — the exact scenario of this case)."
     },
     {
       "id": "RAG-BN-012",
@@ -861,7 +861,7 @@
       "expected_acts": [
         "The Contract Act, 1872",
         "কপিরাইট আইন, ২০২৩",
-        "সাইবার নিরাপত্তা আইন, ২০২৩"
+        "সাইবার সুরক্ষা আইন, ২০২৬"
       ],
       "expected_sections": [
         "27",
@@ -876,7 +876,7 @@
         "28",
         "refund"
       ],
-      "notes": "Long multi-issue enterprise legal scenario testing attention across 5 distinct issues."
+      "notes": "Long multi-issue enterprise legal scenario testing attention across 5 distinct issues. GOLD CORRECTED 2026-11-15: repealed \"সাইবার নিরাপত্তা আইন, ২০২৩\" → in-force \"সাইবার সুরক্ষা আইন, ২০২৬\" (same correction as RAG-BN-011)."
     },
     {
       "id": "RAG-EN-015",

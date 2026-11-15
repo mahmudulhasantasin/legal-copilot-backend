@@ -505,7 +505,6 @@ async def get_download_url(
         .outerjoin(ContractMemo, Contract.id == ContractMemo.contract_id)
         .where(
             Contract.id == contract_id,
-            Contract.user_id == current_user.id,
             Contract.deleted_at == None
         )
     )
@@ -514,6 +513,18 @@ async def get_download_url(
         raise HTTPException(404, "Contract not found.")
 
     contract, memo = row
+
+    # ✅ SEC-BOLA-01: explicit access check consistent with the detail/redline
+    # endpoints — owner OR same-enterprise admin/member. Never authorize by
+    # omission (the old query silently mixed filtering with authorization).
+    is_owner = contract.user_id == current_user.id
+    is_same_enterprise = (
+        current_user.enterprise_id is not None
+        and contract.enterprise_id == current_user.enterprise_id
+        and current_user.role in (UserRole.ENTERPRISE_ADMIN, UserRole.ENTERPRISE_MEMBER)
+    )
+    if not (is_owner or is_same_enterprise):
+        raise HTTPException(403, "Access denied.")
 
     file_to_download = contract.file_path
     if memo and memo.signed_contract_path:

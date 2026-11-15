@@ -156,16 +156,24 @@ def get_llm(prefer_chat_model: bool = False) -> BaseChatModel:
     # 3. Groq
     if groq_key:
         try:
+            groq_max_tokens = int(getattr(settings, "GROQ_MAX_TOKENS", 0) or 0) or int(
+                os.getenv("GROQ_MAX_TOKENS", "950")
+            )
             groq_llm = ChatGroq(
                 model="qwen/qwen3.8-27b",
                 api_key=groq_key,
                 temperature=0.1,
-                max_tokens=2000,
+                # Groq free tier enforces an OUTPUT tokens-per-minute (OTPM) cap of 1000:
+                # requesting max_tokens=2000 made EVERY fallback request fail with
+                # 429 "Request too large ... OTPM: Limit 1000, Requested 2000" (observed
+                # live in the 2026-11-15 benchmark runs). Keep 950 so Groq stays a usable
+                # small-request fallback; large outputs are served by Z.ai (4096) first.
+                max_tokens=groq_max_tokens,
                 reasoning_effort="none",
                 max_retries=1,
                 timeout=45.0,
             )
-            logger.info("Groq fallback LLM initialized successfully.")
+            logger.info("Groq fallback LLM initialized successfully (max_tokens=%s).", groq_max_tokens)
         except Exception as exc:
             logger.warning(f"Failed to initialize Groq: {exc}")
     else:

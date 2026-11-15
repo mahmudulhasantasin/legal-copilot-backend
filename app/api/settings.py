@@ -257,8 +257,10 @@ async def change_password(
             raise HTTPException(400, "Current password is incorrect.")
 
     current_user.hashed_password = get_password_hash(payload.new_password)
+    # ✅ SEC-AUTH-03: revoke all existing sessions after a password change
+    current_user.token_version = int(getattr(current_user, "token_version", 1) or 1) + 1
     await db.commit()
-    return {"status": "success", "message": "Password changed successfully."}
+    return {"status": "success", "message": "Password changed successfully. Please log in again on other devices."}
 
 
 # ──────────────────────────────────────────────────────────

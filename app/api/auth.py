@@ -848,6 +848,9 @@ async def reset_password(
 
     user.hashed_password = get_password_hash(payload.new_password)
 
+    # ✅ SEC-AUTH-03: revoke every token issued before this password reset
+    user.token_version = int(getattr(user, "token_version", 1) or 1) + 1
+
 
 
     await db.commit()
@@ -1585,3 +1588,32 @@ async def delete_my_account(
     await db.commit()
 
     return {"status": "success", "message": "Your account and personal data have been permanently deleted."}
+
+
+@router.post("/logout")
+
+async def logout(
+
+    db: AsyncSession = Depends(get_db),
+
+    current_user: User = Depends(get_current_user)
+
+):
+
+    """
+
+    ✅ SEC-AUTH-03: Server-side logout — bumps the user's token_version so every
+
+    JWT issued before this call is instantly rejected by get_current_user.
+
+    Login does NOT bump the counter (multiple devices stay logged in); only
+
+    logout / password change / password reset / admin suspension revoke sessions.
+
+    """
+
+    current_user.token_version = int(getattr(current_user, "token_version", 1) or 1) + 1
+
+    await db.commit()
+
+    return {"status": "success", "message": "Logged out successfully. All sessions have been revoked."}

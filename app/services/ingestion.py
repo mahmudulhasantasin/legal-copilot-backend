@@ -3,6 +3,7 @@ import re
 import shutil
 import tempfile
 import asyncio
+import uuid
 from typing import List, Optional, Tuple
 from fastapi import UploadFile
 from pypdf import PdfReader
@@ -407,7 +408,12 @@ class DocumentProcessor:
     async def process_upload_file(self, upload_file: UploadFile) -> List[str]:
         temp_dir = tempfile.mkdtemp()
         try:
-            file_path = os.path.join(temp_dir, upload_file.filename)
+            # ✅ SEC-INJ-02: never build temp paths from client-controlled filenames —
+            # keep only a sanitized extension and use a random server-side name.
+            ext = os.path.splitext(os.path.basename(upload_file.filename or ""))[1].lower()
+            if not re.fullmatch(r"\.[A-Za-z0-9]{1,10}", ext):
+                ext = ".bin"
+            file_path = os.path.join(temp_dir, f"{uuid.uuid4().hex}{ext}")
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(upload_file.file, buffer)
             return await self.process_file(file_path)
@@ -428,7 +434,10 @@ async def extract_text_from_file(filename: str, content: bytes) -> str:
             return content.decode("latin-1", errors="ignore")
 
     temp_dir = tempfile.mkdtemp()
-    temp_file_path = os.path.join(temp_dir, filename)
+    # ✅ SEC-INJ-02: sanitized extension + random server-side name (path-traversal-proof)
+    if not re.fullmatch(r"\.[A-Za-z0-9]{1,10}", ext or ""):
+        ext = ".bin"
+    temp_file_path = os.path.join(temp_dir, f"{uuid.uuid4().hex}{ext}")
     try:
         with open(temp_file_path, "wb") as f:
             f.write(content)
