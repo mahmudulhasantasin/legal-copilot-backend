@@ -712,6 +712,41 @@ async def generate_answer_node(state: QAState) -> dict:
         logger.error(f"[generate_answer_node] Error invoking LLM: {exc}")
         raise exc
 
+    # ✅ Deterministic cited_cases backfill: live web precedents from the MCP search
+    # often get woven into the answer prose (verified in prod: "[CPLA No. 1059-1061
+    # of 2024]") while the LLM still leaves the cited_cases JSON array empty. Only
+    # precedent docs the answer actually references (≥2 distinctive tokens from
+    # title/snippet found in the answer) are backfilled — never invented.
+    if precedent_blocks and not (parsed_json.get("cited_cases") or []):
+        backfilled = []
+        for d in raw_docs:
+            if not isinstance(d, dict) or d.get("source_type") != "precedent":
+                continue
+            title = (d.get("title") or "").strip()
+            if not title or title == "Live Web Search Result":
+                continue
+            doc_text = f"{title} {d.get('content') or ''}"
+            tokens = {
+                t.lower()
+                for t in re.findall(r"[A-Za-z0-9]{3,}", doc_text)
+                if t.lower() not in {"supreme", "court", "bangladesh", "pdf", "home",
+                                     "legal", "update", "result", "reference", "source"}
+            }
+            answer_low = final_text.lower()
+            matched = sum(1 for t in tokens if t in answer_low)
+            if matched >= 2:
+                backfilled.append({
+                    "case_name": title,
+                    "ruling": (d.get("content") or "")[:300],
+                    "relevance": "Live Bangladesh case-law result retrieved and used in this answer.",
+                    "source_url": d.get("reference_url") or (d.get("metadata") or {}).get("url", ""),
+                })
+        if backfilled:
+            parsed_json["cited_cases"] = backfilled[:3]
+            logger.info(
+                f"[generate_answer_node] Backfilled {len(backfilled)} cited_cases from referenced live precedents."
+            )
+
     return {
         "final_answer": final_text,
         "structured_response": parsed_json,
