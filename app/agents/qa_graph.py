@@ -714,16 +714,24 @@ async def generate_answer_node(state: QAState) -> dict:
 
     # ✅ Deterministic cited_cases backfill: live web precedents from the MCP search
     # often get woven into the answer prose (verified in prod: "[CPLA No. 1059-1061
-    # of 2024]") while the LLM still leaves the cited_cases JSON array empty. Only
-    # precedent docs the answer actually references (≥2 distinctive tokens from
-    # title/snippet found in the answer) are backfilled — never invented.
-    if precedent_blocks and not (parsed_json.get("cited_cases") or []):
+    # of 2024]") while the LLM's own cited_cases array either stays empty OR contains
+    # unverifiable entries that chat.py's strict formatter later drops (no URL, not in
+    # the verifier map → response ends with cited_cases: 0). So we MERGE referenced
+    # precedent docs unconditionally: only docs the answer actually references
+    # (≥2 distinctive tokens from title/snippet found in the answer) are added —
+    # never invented. Their snippet content embeds "Reference Source: <url>", which
+    # lets the downstream URL-bypass keep them in the API response.
+    if precedent_blocks:
+        existing_cases = [c for c in (parsed_json.get("cited_cases") or []) if isinstance(c, dict)]
+        existing_names = {str(c.get("case_name", "")).strip().lower() for c in existing_cases}
         backfilled = []
         for d in raw_docs:
             if not isinstance(d, dict) or d.get("source_type") != "precedent":
                 continue
             title = (d.get("title") or "").strip()
             if not title or title == "Live Web Search Result":
+                continue
+            if title.strip().lower() in existing_names:
                 continue
             doc_text = f"{title} {d.get('content') or ''}"
             tokens = {
@@ -742,9 +750,11 @@ async def generate_answer_node(state: QAState) -> dict:
                     "source_url": d.get("reference_url") or (d.get("metadata") or {}).get("url", ""),
                 })
         if backfilled:
-            parsed_json["cited_cases"] = backfilled[:3]
+            merged = (existing_cases + backfilled)[:5]
+            parsed_json["cited_cases"] = merged
             logger.info(
-                f"[generate_answer_node] Backfilled {len(backfilled)} cited_cases from referenced live precedents."
+                f"[generate_answer_node] Backfilled {len(backfilled)} cited_cases from referenced live precedents "
+                f"(merged with {len(existing_cases)} LLM entries)."
             )
 
     return {
