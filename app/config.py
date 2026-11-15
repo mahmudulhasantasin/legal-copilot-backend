@@ -75,6 +75,8 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
     MCP_SERVER_URL: str = os.getenv("MCP_SERVER_URL", "https://bd-legal-mcp-server.onrender.com/mcp")
+    # ✅ Per-call timeout (s) for MCP tool calls — whole retry ladder capped by this
+    MCP_TOOL_TIMEOUT_S: int = int(os.getenv("MCP_TOOL_TIMEOUT_S", "40"))
 
     # ✅ Pydantic V2 এর নতুন কনফিগারেশন
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

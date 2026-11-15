@@ -181,24 +181,52 @@ def _fallback_route(query, contract_context):
 
 
 # ✅ UPDATED: Official MCP Client (handles initialize handshake + Mcp-Session-Id automatically)
+# Prod-log finding (2026-11-15): the MCP SSE stream often disconnects mid-call from the
+# Render backend ("GET stream disconnected, reconnecting..." ×N then session DELETE),
+# so a single attempt intermittently returns nothing even though the MCP server is
+# healthy. Fix: bounded retry ladder (like the audit path's 25s wait_for pattern) —
+# each attempt gets a fresh session, whole call capped at MCP_TOOL_TIMEOUT_S.
+async def _call_remote_mcp_tool_once(tool_name: str, arguments: dict, mcp_url: str) -> dict:
+    async with streamablehttp_client(mcp_url) as (read_stream, write_stream, _):
+        async with ClientSession(read_stream, write_stream) as session:
+            await session.initialize()
+            result = await session.call_tool(tool_name, arguments)
+
+            # Return the exact format our parsing logic in retrieve_node expects
+            return {"content": [item.model_dump() for item in result.content]}
+
+
 async def call_remote_mcp_tool(tool_name: str, arguments: dict) -> dict:
     """
     Sends a request to the standalone MCP server on Render using the official MCP Client.
     Handles handshake (initialize) and session IDs automatically — no more 400 Bad Request.
+    Retries up to 2 times on transport failures (SSE stream disconnects) with a hard
+    per-call timeout, so one flaky stream never silently zeroes out live case-law results.
     """
     MCP_URL = getattr(settings, "MCP_SERVER_URL", "https://bd-legal-mcp-server.onrender.com/mcp")
+    timeout_s = float(getattr(settings, "MCP_TOOL_TIMEOUT_S", 40))
+    last_err: Exception | None = None
 
-    try:
-        async with streamablehttp_client(MCP_URL) as (read_stream, write_stream, _):
-            async with ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                result = await session.call_tool(tool_name, arguments)
+    for attempt in range(1, 3):  # 2 attempts
+        try:
+            result = await asyncio.wait_for(
+                _call_remote_mcp_tool_once(tool_name, arguments, MCP_URL), timeout=timeout_s
+            )
+            if result.get("content"):
+                return result
+            last_err = RuntimeError("MCP returned empty content")
+            logger.warning(
+                f"[call_remote_mcp_tool] Attempt {attempt}: empty content from {tool_name}."
+            )
+        except Exception as e:
+            last_err = e
+            logger.warning(
+                f"[call_remote_mcp_tool] Attempt {attempt} failed for {tool_name}: {e}"
+            )
+        await asyncio.sleep(1.5)
 
-                # Return the exact format our parsing logic in retrieve_node expects
-                return {"content": [item.model_dump() for item in result.content]}
-    except Exception as e:
-        logger.error(f"[call_remote_mcp_tool] Remote MCP Call Failed: {e}")
-        return {}
+    logger.error(f"[call_remote_mcp_tool] Remote MCP Call Failed after retries: {last_err}")
+    return {}
 
 
 async def classify_query_node(state: QAState) -> dict:
