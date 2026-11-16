@@ -22,6 +22,7 @@ from app.api import (
     settings,
     platform,
     inquiries,
+    docs,
 )
 
 # ── Import Database & Services ──
@@ -100,6 +101,11 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_failed_attempts INTEGER DEFAULT 0 NOT NULL;",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_locked_until TIMESTAMPTZ;",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 1 NOT NULL;",
+                # ── Docs Module tables ──
+                "CREATE TABLE IF NOT EXISTS docs_config (id INTEGER PRIMARY KEY DEFAULT 1, visibility VARCHAR(20) DEFAULT 'SCHEDULED' NOT NULL, schedule_start TIMESTAMPTZ, schedule_end TIMESTAMPTZ, pitch_deck JSON, tech_docs JSON, changelog JSON, roadmap JSON, custom_sections JSON, updated_at TIMESTAMPTZ DEFAULT NOW(), updated_by VARCHAR(120));",
+                "CREATE TABLE IF NOT EXISTS docs_team_members (id SERIAL PRIMARY KEY, full_name VARCHAR(120) NOT NULL, role VARCHAR(150) NOT NULL, email VARCHAR(200), image_url TEXT, bio TEXT, linkedin_url TEXT, github_url TEXT, display_order INTEGER DEFAULT 0, is_active BOOLEAN DEFAULT TRUE, created_at TIMESTAMPTZ DEFAULT NOW());",
+                "INSERT INTO docs_config (id, visibility, schedule_start, schedule_end) SELECT 1, 'SCHEDULED', '2027-06-10T00:00:00+06:00', '2027-06-14T23:59:59+06:00' WHERE NOT EXISTS (SELECT 1 FROM docs_config WHERE id = 1);",
+
                 "UPDATE users SET member_approval_status = 'APPROVED', company_role = 'ADMIN' WHERE role = 'ENTERPRISE_ADMIN' AND (member_approval_status IS NULL OR member_approval_status != 'APPROVED' OR company_role IS NULL OR company_role != 'ADMIN');",
                 "INSERT INTO credit_packages (name, tier, description, price_bdt, base_credits, bonus_credits, applies_to, is_active, display_order, badge_text, created_at) SELECT 'Enterprise Growth', 'ENTERPRISE', 'For growing legal teams (up to 5 members).', 5000.00, 5000, 500, 'ENTERPRISE', TRUE, 4, 'Team Choice', NOW() WHERE NOT EXISTS (SELECT 1 FROM credit_packages WHERE name = 'Enterprise Growth');",
                 "INSERT INTO credit_packages (name, tier, description, price_bdt, base_credits, bonus_credits, applies_to, is_active, display_order, badge_text, created_at) SELECT 'Enterprise Scale', 'ENTERPRISE', 'For corporate legal teams (5-10 members).', 10000.00, 8000, 3500, 'ENTERPRISE', TRUE, 5, 'Most Popular', NOW() WHERE NOT EXISTS (SELECT 1 FROM credit_packages WHERE name = 'Enterprise Scale' OR name = 'Enterprise Pack');",
@@ -195,6 +201,9 @@ app.include_router(settings.router)
 # ✅ Platform Metrics, Architecture & Pitch Deck (NEW)
 app.include_router(platform.router)
 app.include_router(inquiries.router)
+
+# Documentation & Pitch Deck
+app.include_router(docs.router)
 
 
 # ──────────────────────────────────────────────────────────

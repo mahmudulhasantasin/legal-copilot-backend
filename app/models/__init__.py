@@ -84,6 +84,13 @@ from app.models.inquiry import (
     NewsletterSubscriber,
 )
 
+# 9. Docs / Pitch Deck Module
+from app.models.docs_config import (
+    DocsConfig,
+    DocsVisibility,
+    DocsTeamMember,
+)
+
 
 # ──────────────────────────────────────────────────────────
 # PUBLIC API
@@ -146,4 +153,9 @@ __all__ = [
     # ── Inquiries ──
     "FeedbackSuggestion",
     "NewsletterSubscriber",
+
+    # -- Docs Module --
+    "DocsConfig",
+    "DocsVisibility",
+    "DocsTeamMember",
 ]
