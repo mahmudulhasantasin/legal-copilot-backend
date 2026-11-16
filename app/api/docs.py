@@ -20,7 +20,7 @@ Admin endpoints (ADMIN role required):
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -29,9 +29,10 @@ from sqlalchemy import select, func as sa_func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user, require_roles
+from app.core.security import get_current_user, get_current_user_optional, require_roles
 from app.models.user import User, UserRole
 from app.models.docs_config import DocsConfig, DocsTeamMember, DocsVisibility
+from app.services.docs_content import merged_content, build_markdown
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ router = APIRouter(prefix="/api/docs", tags=["Documentation & Pitch Deck"])
 # HELPER: get-or-create the singleton config row
 # ──────────────────────────────────────────────────────────
 
-# Default schedule: June 10 00:00 → June 14 23:59 BST (UTC+6)
+# Default schedule kept as metadata; visibility defaults to ON (public 24/7).
 _DEFAULT_START = datetime(2027, 6, 10, 0, 0, 0, tzinfo=timezone.utc)
 _DEFAULT_END = datetime(2027, 6, 14, 23, 59, 59, tzinfo=timezone.utc)
 
@@ -54,13 +55,22 @@ async def _get_config(db: AsyncSession) -> DocsConfig:
     if cfg is None:
         cfg = DocsConfig(
             id=1,
-            visibility=DocsVisibility.SCHEDULED,
+            visibility=DocsVisibility.ON,
             schedule_start=_DEFAULT_START,
             schedule_end=_DEFAULT_END,
         )
         db.add(cfg)
         await db.flush()
     return cfg
+
+
+def _as_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    """Normalize naive datetimes (client-supplied ISO without timezone) to UTC."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def _is_accessible(cfg: DocsConfig) -> bool:
@@ -71,9 +81,20 @@ def _is_accessible(cfg: DocsConfig) -> bool:
         return False
     # SCHEDULED
     now = datetime.now(timezone.utc)
-    start = cfg.schedule_start or _DEFAULT_START
-    end = cfg.schedule_end or _DEFAULT_END
+    start = _as_utc(cfg.schedule_start) or _DEFAULT_START
+    end = _as_utc(cfg.schedule_end) or _DEFAULT_END
     return start <= now <= end
+
+
+def _is_admin(user: Optional[User]) -> bool:
+    """Admins can preview /docs even when the public window is closed."""
+    return user is not None and user.role == UserRole.ADMIN
+
+
+def _gate(cfg: DocsConfig, user: Optional[User]) -> None:
+    """Raise 403 unless the docs are public right now or the viewer is admin."""
+    if not _is_accessible(cfg) and not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Documentation is not currently available.")
 
 
 # ──────────────────────────────────────────────────────────
@@ -92,6 +113,17 @@ class DocsConfigUpdate(BaseModel):
     visibility: Optional[str] = None
     schedule_start: Optional[str] = None
     schedule_end: Optional[str] = None
+    # Duration-based publishing: give start + duration and the end is computed.
+    duration_hours: Optional[float] = None
+
+
+class DocsDraftUpdate(BaseModel):
+    """Saved-but-not-live content overrides (see /draft and /publish)."""
+    pitch_deck: Optional[Dict[str, Any]] = None
+    tech_docs: Optional[Dict[str, Any]] = None
+    changelog: Optional[List[Dict[str, Any]]] = None
+    roadmap: Optional[Dict[str, Any]] = None
+    custom_sections: Optional[List[Dict[str, Any]]] = None
 
 
 class DocsContentUpdate(BaseModel):
@@ -145,33 +177,33 @@ async def check_access(db: AsyncSession = Depends(get_db)) -> DocsAccessResponse
 
 
 @router.get("/content")
-async def get_content(db: AsyncSession = Depends(get_db)):
+async def get_content(
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
     """
     Return full docs content (pitch deck + tech docs + changelog + roadmap).
-    Public but gated by access control.
+    Public but gated by access control; admins bypass the window.
+    Null sections are filled from real defaults (never an empty page).
     """
     cfg = await _get_config(db)
     await db.commit()
-    if not _is_accessible(cfg):
-        raise HTTPException(status_code=403, detail="Documentation is not currently available.")
+    _gate(cfg, current_user)
 
-    return {
-        "pitch_deck": cfg.pitch_deck,
-        "tech_docs": cfg.tech_docs,
-        "changelog": cfg.changelog,
-        "roadmap": cfg.roadmap,
-        "custom_sections": cfg.custom_sections,
-        "updated_at": cfg.updated_at.isoformat() if cfg.updated_at else None,
-    }
+    data = merged_content(cfg)
+    data["updated_at"] = cfg.updated_at.isoformat() if cfg.updated_at else None
+    return data
 
 
 @router.get("/team")
-async def get_team(db: AsyncSession = Depends(get_db)):
-    """Return active team members, ordered by display_order."""
+async def get_team(
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """Return active team members, ordered by display_order. Admin bypasses the window."""
     cfg = await _get_config(db)
     await db.commit()
-    if not _is_accessible(cfg):
-        raise HTTPException(status_code=403, detail="Documentation is not currently available.")
+    _gate(cfg, current_user)
 
     result = await db.execute(
         select(DocsTeamMember)
@@ -196,14 +228,16 @@ async def get_team(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/live-stats")
-async def get_live_stats(db: AsyncSession = Depends(get_db)):
+async def get_live_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
     """
     Aggregated live KPIs for the pitch deck traction slide.
-    Public but gated by access control.
+    Public but gated by access control; admins bypass the window.
     """
     cfg = await _get_config(db)
-    if not _is_accessible(cfg):
-        raise HTTPException(status_code=403, detail="Documentation is not currently available.")
+    _gate(cfg, current_user)
 
     stats: Dict[str, Any] = {
         "total_users": 0,
@@ -287,15 +321,24 @@ async def update_config(
 
     if body.schedule_start is not None:
         try:
-            cfg.schedule_start = datetime.fromisoformat(body.schedule_start)
+            cfg.schedule_start = _as_utc(datetime.fromisoformat(body.schedule_start))
         except ValueError:
             raise HTTPException(400, "Invalid schedule_start format. Use ISO 8601.")
 
     if body.schedule_end is not None:
         try:
-            cfg.schedule_end = datetime.fromisoformat(body.schedule_end)
+            cfg.schedule_end = _as_utc(datetime.fromisoformat(body.schedule_end))
         except ValueError:
             raise HTTPException(400, "Invalid schedule_end format. Use ISO 8601.")
+
+    # Duration-based publishing: end = start + duration (overrides a supplied end)
+    if body.duration_hours is not None:
+        if body.duration_hours <= 0:
+            raise HTTPException(400, "duration_hours must be positive.")
+        start = _as_utc(cfg.schedule_start)
+        if start is None:
+            raise HTTPException(400, "duration_hours requires schedule_start to be set.")
+        cfg.schedule_end = start + timedelta(hours=body.duration_hours)
 
     cfg.updated_by = current_user.email or current_user.full_name or str(current_user.id)
     await db.commit()
@@ -319,6 +362,9 @@ async def update_content(
     """Admin: update editable content sections (pitch deck, tech docs, etc.)."""
     cfg = await _get_config(db)
 
+    # Version snapshot captures the state BEFORE the change (rollback semantics)
+    _append_version(cfg, current_user)
+
     if body.pitch_deck is not None:
         cfg.pitch_deck = body.pitch_deck
     if body.tech_docs is not None:
@@ -332,7 +378,187 @@ async def update_content(
 
     cfg.updated_by = current_user.email or current_user.full_name or str(current_user.id)
     await db.commit()
-    return {"message": "Documentation content updated."}
+    return {"message": "Documentation content updated.", "versions": len(cfg.content_versions or [])}
+
+
+# ── Draft / Publish / Versioning ──
+
+_LIVE_CONTENT_KEYS = ("pitch_deck", "tech_docs", "roadmap", "changelog", "custom_sections")
+_MAX_VERSIONS = 10
+
+
+def _snapshot_content(cfg: DocsConfig) -> Dict[str, Any]:
+    return {key: getattr(cfg, key) for key in _LIVE_CONTENT_KEYS}
+
+
+def _append_version(cfg: DocsConfig, user: Optional[User]) -> None:
+    """Record a rolling snapshot (newest first, capped at _MAX_VERSIONS)."""
+    versions = list(cfg.content_versions or [])
+    versions.insert(0, {
+        "at": datetime.now(timezone.utc).isoformat(),
+        "by": (user.email if user and user.email else None)
+              or (user.full_name if user else None),
+        "snapshot": _snapshot_content(cfg),
+    })
+    cfg.content_versions = versions[:_MAX_VERSIONS]
+
+
+@router.get("/draft")
+async def get_draft(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN)),
+):
+    """Admin: get the saved (not yet published) draft."""
+    cfg = await _get_config(db)
+    await db.commit()
+    return {"draft": cfg.draft}
+
+
+@router.put("/draft")
+async def save_draft(
+    body: DocsDraftUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN)),
+):
+    """Admin: save content edits as a draft. Nothing goes live until /publish."""
+    cfg = await _get_config(db)
+    payload = {k: v for k, v in body.model_dump().items() if v is not None}
+    payload["saved_at"] = datetime.now(timezone.utc).isoformat()
+    payload["saved_by"] = current_user.email or current_user.full_name or str(current_user.id)
+    cfg.draft = payload
+    await db.commit()
+    return {"message": "Draft saved. Publish to make it live.", "saved_at": payload["saved_at"]}
+
+
+@router.delete("/draft")
+async def discard_draft(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN)),
+):
+    """Admin: discard the saved draft (live content is untouched)."""
+    cfg = await _get_config(db)
+    cfg.draft = None
+    await db.commit()
+    return {"message": "Draft discarded."}
+
+
+@router.post("/publish")
+async def publish_draft(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN)),
+):
+    """Admin: apply the saved draft to the live page and record a version."""
+    cfg = await _get_config(db)
+    draft = cfg.draft or {}
+    if not any(draft.get(key) is not None for key in _LIVE_CONTENT_KEYS):
+        raise HTTPException(400, "No draft saved. Save a draft first (PUT /api/docs/draft).")
+
+    # Version snapshot captures the state BEFORE publishing (rollback semantics)
+    _append_version(cfg, current_user)
+
+    applied = []
+    for key in _LIVE_CONTENT_KEYS:
+        value = draft.get(key)
+        if value is not None:
+            setattr(cfg, key, value)
+            applied.append(key)
+
+    cfg.updated_by = current_user.email or current_user.full_name or str(current_user.id)
+    version_count = len(cfg.content_versions or [])
+    await db.commit()
+    return {"message": "Draft published.", "applied": applied, "versions": version_count}
+
+
+@router.get("/versions")
+async def list_versions(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN)),
+):
+    """Admin: list content version snapshots (newest first)."""
+    cfg = await _get_config(db)
+    await db.commit()
+    return [
+        {"index": i, "at": v.get("at"), "by": v.get("by")}
+        for i, v in enumerate(cfg.content_versions or [])
+    ]
+
+
+@router.post("/versions/{version_index}/restore")
+async def restore_version(
+    version_index: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN)),
+):
+    """Admin: roll the live content back to a stored version snapshot."""
+    cfg = await _get_config(db)
+    versions = cfg.content_versions or []
+    if version_index < 0 or version_index >= len(versions):
+        raise HTTPException(404, "Version not found.")
+
+    snapshot = versions[version_index].get("snapshot") or {}
+
+    # Version snapshot captures the state BEFORE restoring (rollback semantics).
+    # Keys present in the snapshot are restored verbatim — including None —
+    # so an override can be rolled back to "default content".
+    _append_version(cfg, current_user)
+
+    restored = []
+    for key in _LIVE_CONTENT_KEYS:
+        if key in snapshot:
+            setattr(cfg, key, snapshot.get(key))
+            restored.append(key)
+
+    cfg.updated_by = current_user.email or current_user.full_name or str(current_user.id)
+    await db.commit()
+    return {"message": f"Restored version {version_index}.", "restored": restored}
+
+
+# ──────────────────────────────────────────────────────────
+# MARKDOWN EXPORT
+# ──────────────────────────────────────────────────────────
+
+@router.get("/export.md")
+async def export_markdown(
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """
+    Full /docs page as Markdown (same access gate as /content).
+    Content-Type text/markdown so browsers download or render it directly.
+    """
+    from fastapi import Response
+
+    cfg = await _get_config(db)
+    await db.commit()
+    _gate(cfg, current_user)
+
+    content = merged_content(cfg)
+    team_rows = await db.execute(
+        select(DocsTeamMember)
+        .where(DocsTeamMember.is_active == True)
+        .order_by(DocsTeamMember.display_order, DocsTeamMember.id)
+    )
+    team = [
+        {"full_name": m.full_name, "role": m.role, "email": m.email}
+        for m in team_rows.scalars().all()
+    ]
+    stats = await get_live_stats(db=db, current_user=current_user)
+    md = build_markdown(
+        content,
+        team,
+        stats,
+        {
+            "visibility": cfg.visibility.value if hasattr(cfg.visibility, "value") else str(cfg.visibility),
+            "schedule_start": cfg.schedule_start.isoformat() if cfg.schedule_start else None,
+            "schedule_end": cfg.schedule_end.isoformat() if cfg.schedule_end else None,
+            "exported_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        },
+    )
+    return Response(
+        content=md,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": "inline; filename=contractmind-docs.md"},
+    )
 
 
 # ── Team CRUD ──

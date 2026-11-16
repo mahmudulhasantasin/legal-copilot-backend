@@ -58,6 +58,12 @@ class DocsConfig(Base):
     roadmap: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     custom_sections: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
 
+    # ── Draft & Versioning ──
+    # draft: saved-but-not-live content overrides (published via POST /api/docs/publish)
+    draft: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # content_versions: rolling list (max 10, newest first) of published snapshots
+    content_versions: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+
     # ── Meta ──
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

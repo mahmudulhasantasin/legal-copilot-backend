@@ -23,6 +23,7 @@ from app.api import (
     platform,
     inquiries,
     docs,
+    docs_page,
 )
 
 # ── Import Database & Services ──
@@ -104,7 +105,14 @@ async def lifespan(app: FastAPI):
                 # ── Docs Module tables ──
                 "CREATE TABLE IF NOT EXISTS docs_config (id INTEGER PRIMARY KEY DEFAULT 1, visibility VARCHAR(20) DEFAULT 'SCHEDULED' NOT NULL, schedule_start TIMESTAMPTZ, schedule_end TIMESTAMPTZ, pitch_deck JSON, tech_docs JSON, changelog JSON, roadmap JSON, custom_sections JSON, updated_at TIMESTAMPTZ DEFAULT NOW(), updated_by VARCHAR(120));",
                 "CREATE TABLE IF NOT EXISTS docs_team_members (id SERIAL PRIMARY KEY, full_name VARCHAR(120) NOT NULL, role VARCHAR(150) NOT NULL, email VARCHAR(200), image_url TEXT, bio TEXT, linkedin_url TEXT, github_url TEXT, display_order INTEGER DEFAULT 0, is_active BOOLEAN DEFAULT TRUE, created_at TIMESTAMPTZ DEFAULT NOW());",
-                "INSERT INTO docs_config (id, visibility, schedule_start, schedule_end) SELECT 1, 'SCHEDULED', '2027-06-10T00:00:00+06:00', '2027-06-14T23:59:59+06:00' WHERE NOT EXISTS (SELECT 1 FROM docs_config WHERE id = 1);",
+                "INSERT INTO docs_config (id, visibility, schedule_start, schedule_end) SELECT 1, 'ON', '2027-06-10T00:00:00+06:00', '2027-06-14T23:59:59+06:00' WHERE NOT EXISTS (SELECT 1 FROM docs_config WHERE id = 1);",
+                # One-time flip: pre-existing rows seeded with the old placeholder
+                # schedule become public. Deliberate admin changes (OFF/custom
+                # window) are respected — only the untouched placeholder matches.
+                "UPDATE docs_config SET visibility='ON' WHERE id=1 AND visibility='SCHEDULED' AND schedule_start='2027-06-10T00:00:00+06:00' AND schedule_end='2027-06-14T23:59:59+06:00';",
+                # Draft & versioning columns (idempotent)
+                "ALTER TABLE docs_config ADD COLUMN IF NOT EXISTS draft JSON;",
+                "ALTER TABLE docs_config ADD COLUMN IF NOT EXISTS content_versions JSON;",
 
                 "UPDATE users SET member_approval_status = 'APPROVED', company_role = 'ADMIN' WHERE role = 'ENTERPRISE_ADMIN' AND (member_approval_status IS NULL OR member_approval_status != 'APPROVED' OR company_role IS NULL OR company_role != 'ADMIN');",
                 "INSERT INTO credit_packages (name, tier, description, price_bdt, base_credits, bonus_credits, applies_to, is_active, display_order, badge_text, created_at) SELECT 'Enterprise Growth', 'ENTERPRISE', 'For growing legal teams (up to 5 members).', 5000.00, 5000, 500, 'ENTERPRISE', TRUE, 4, 'Team Choice', NOW() WHERE NOT EXISTS (SELECT 1 FROM credit_packages WHERE name = 'Enterprise Growth');",
@@ -204,6 +212,9 @@ app.include_router(inquiries.router)
 
 # Documentation & Pitch Deck
 app.include_router(docs.router)
+
+# Live /docs HTML page (access-gated, admin preview)
+app.include_router(docs_page.router)
 
 
 # ──────────────────────────────────────────────────────────
