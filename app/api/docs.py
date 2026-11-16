@@ -61,6 +61,22 @@ async def _get_config(db: AsyncSession) -> DocsConfig:
         )
         db.add(cfg)
         await db.flush()
+    else:
+        dirty = False
+        if cfg.pitch_deck and "ContractMind" in str(cfg.pitch_deck.get("company", "")):
+            p = dict(cfg.pitch_deck)
+            p["company"] = "Advotech Copilot"
+            cfg.pitch_deck = p
+            dirty = True
+        if cfg.draft and isinstance(cfg.draft, dict) and "ContractMind" in str(cfg.draft.get("pitch_deck", {}).get("company", "")):
+            d = dict(cfg.draft)
+            dp = dict(d.get("pitch_deck") or {})
+            dp["company"] = "Advotech Copilot"
+            d["pitch_deck"] = dp
+            cfg.draft = d
+            dirty = True
+        if dirty:
+            await db.flush()
     return cfg
 
 
@@ -557,7 +573,7 @@ async def export_markdown(
     return Response(
         content=md,
         media_type="text/markdown; charset=utf-8",
-        headers={"Content-Disposition": "inline; filename=contractmind-docs.md"},
+        headers={"Content-Disposition": "inline; filename=advotech-copilot-docs.md"},
     )
 
 

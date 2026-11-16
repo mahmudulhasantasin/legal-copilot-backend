@@ -84,7 +84,7 @@ def _render_not_available(cfg: DocsConfig) -> HTMLResponse:
   <h1>Not Available</h1>
   <p>{html.escape(message)}</p>
   {window_html}
-  <p style="margin-top:20px;font-size:13px">ContractMind (Advotech) — Live Documentation System</p>
+  <p style="margin-top:20px;font-size:13px">Advotech Copilot — Live Documentation System</p>
 </div></body></html>"""
     return HTMLResponse(content=page, status_code=403)
 
@@ -167,8 +167,8 @@ PAGE_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ContractMind — Live Docs & Pitch Deck</title>
-<meta name="description" content="ContractMind live documentation: YC-style pitch deck, technical whitepaper and real-time system dashboard.">
+<title>Advotech Copilot — Live Docs & Pitch Deck</title>
+<meta name="description" content="Advotech Copilot live documentation: YC-style pitch deck, technical whitepaper and real-time system dashboard.">
 <style>
 :root{
   --bg:#0d1117; --bg2:#161b22; --bg3:#1c2431; --border:#30363d; --text:#e6edf3;
@@ -282,11 +282,17 @@ pre.fallback{color:var(--muted);font-size:12px;white-space:pre-wrap}
 <body>
 <div class="topbar">
   <button id="menuBtn" aria-label="Menu">&#9776;</button>
-  <b>ContractMind</b><span class="badge">Live Docs</span>
+  <div style="display:flex;align-items:center;gap:8px">
+    <img src="/logo.svg" alt="Advotech Copilot" width="22" height="22" style="filter:invert(0.9)" onerror="this.style.display='none'">
+    <b>Advotech Copilot</b><span class="badge">Live Docs</span>
+  </div>
 </div>
 <div class="layout">
   <aside class="sidebar" id="sidebar">
-    <div class="brand">ContractMind</div>
+    <div class="brand" style="display:flex;align-items:center;gap:10px">
+      <img src="/logo.svg" alt="Advotech Copilot" width="28" height="28" style="filter:invert(0.9)" onerror="this.style.display='none'">
+      <span>Advotech Copilot</span>
+    </div>
     <div class="brand-sub">Advotech · Live Documentation</div>
     <input id="search" type="search" placeholder="Search docs..." autocomplete="off">
     <div id="nav"></div>
@@ -392,7 +398,7 @@ pre.fallback{color:var(--muted);font-size:12px;white-space:pre-wrap}
     </section>
 
     <footer style="margin-top:60px;border-top:1px solid var(--border);padding-top:16px" class="muted">
-      ContractMind (Advotech) · Live documentation, auto-synced with the running system · Built for AI Builders Congress 2026
+      Advotech Copilot · Live documentation, auto-synced with the running system · Built for AI Builders Congress 2026
     </footer>
   </main>
 </div>
@@ -402,7 +408,15 @@ pre.fallback{color:var(--muted);font-size:12px;white-space:pre-wrap}
 (function(){
 "use strict";
 var TOKEN = null;
-try { TOKEN = new URLSearchParams(location.search).get("token") || localStorage.getItem("docs_admin_token") || null; } catch(e){}
+try {
+  TOKEN = new URLSearchParams(location.search).get("token") ||
+          localStorage.getItem("contractmind_token") ||
+          localStorage.getItem("docs_admin_token") || null;
+  if (!TOKEN) {
+    var rawDemo = localStorage.getItem("app_auth_v2");
+    if (rawDemo) { var p = JSON.parse(rawDemo); TOKEN = p.token || p.access_token || null; }
+  }
+} catch(e){}
 if (TOKEN) { try { localStorage.setItem("docs_admin_token", TOKEN); } catch(e){} }
 
 function authHeaders(extra){
@@ -831,10 +845,14 @@ function loadAdmin(){
       el("cfgNow").textContent = "Last updated " + (cfg.updated_at || "unknown");
       loadDraftStatus();
       loadVersions();
-      return fetch("/api/docs/content", { headers: authHeaders() }).then(function(r){ return r.json(); });
+      return Promise.all([
+        fetch("/api/docs/content", { headers: authHeaders() }).then(function(r){ return r.json(); }),
+        fetch("/api/docs/draft", { headers: authHeaders() }).then(function(r){ return r.ok ? r.json() : { draft: null }; }).catch(function(){ return { draft: null }; })
+      ]);
     })
-    .then(function(content){
-      if (!content) return;
+    .then(function(pair){
+      var content = pair[0] || {};
+      var draftObj = (pair[1] && pair[1].draft) ? pair[1].draft : null;
       WORK = {
         pitch_deck: content.pitch_deck || {},
         tech_docs: content.tech_docs || {},
@@ -842,6 +860,12 @@ function loadAdmin(){
         changelog: content.changelog || [],
         custom_sections: content.custom_sections || []
       };
+      if (draftObj && draftObj.saved_at){
+        if (draftObj.pitch_deck) Object.assign(WORK.pitch_deck, draftObj.pitch_deck);
+        if (draftObj.tech_docs) Object.assign(WORK.tech_docs, draftObj.tech_docs);
+        if (draftObj.roadmap) Object.assign(WORK.roadmap, draftObj.roadmap);
+        if (draftObj.changelog) WORK.changelog = draftObj.changelog;
+      }
       syncJsonTabs();
       buildSimpleEditor();
       return fetch("/api/docs/admin/team", { headers: authHeaders() }).then(function(r){ return r.json(); });
@@ -1018,7 +1042,8 @@ function loadAll(){
     var content = res[0], team = res[1], stats = res[2];
     var pitch = content.pitch_deck || {};
     document.getElementById("tagline").textContent = pitch.tagline || "";
-    document.getElementById("company").textContent = pitch.company || "ContractMind";
+    var companyName = (pitch.company && pitch.company.indexOf("ContractMind") === -1) ? pitch.company : "Advotech Copilot";
+    document.getElementById("company").textContent = companyName;
     document.getElementById("oneliner").textContent = pitch.one_liner || "";
     document.getElementById("content").innerHTML =
       renderPitch(pitch) + renderTech(content.tech_docs||{}) + renderRoadmap(content.roadmap||{}) + renderChangelog(content.changelog);

@@ -20,7 +20,7 @@ from typing import Any, Dict, List
 # ──────────────────────────────────────────────────────────
 
 DEFAULT_PITCH_DECK: Dict[str, Any] = {
-    "company": "ContractMind (Advotech)",
+    "company": "Advotech Copilot",
     "team_name": "Team Advotech",
     "tagline": "AI-powered Legal Intelligence for the Global South",
     "one_liner": "30-second AI contract audits for ৳28 ($0.25) — verified by real lawyers. Legal help that 80% of South Asians can actually afford.",
@@ -268,6 +268,9 @@ def merged_content(cfg) -> Dict[str, Any]:
         if value is not None:
             pitch[key] = value
 
+    if not pitch.get("company") or "ContractMind" in str(pitch.get("company")):
+        pitch["company"] = "Advotech Copilot"
+
     tech = dict(DEFAULT_TECH_DOCS)
     stored_tech = cfg.tech_docs or {}
     for key, value in stored_tech.items():
@@ -344,7 +347,7 @@ def build_markdown(content: Dict[str, Any], team: List[Dict[str, Any]], stats: D
     pitch = content.get("pitch_deck", {})
     tech = content.get("tech_docs", {})
     out: List[str] = []
-    out.append(f"# {pitch.get('company', 'ContractMind')} — Live Documentation & Pitch Deck\n")
+    out.append(f"# {pitch.get('company', 'Advotech Copilot')} — Live Documentation & Pitch Deck\n")
     out.append(f"> {pitch.get('tagline', '')}\n")
     out.append(f"> {pitch.get('one_liner', '')}\n")
 

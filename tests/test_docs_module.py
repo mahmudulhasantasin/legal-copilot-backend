@@ -239,7 +239,7 @@ async def test_export_markdown_gated_and_real(async_db):
     await async_db.commit()
     response = await docs_api.export_markdown(db=async_db, current_user=None)
     body = response.body.decode("utf-8")
-    assert "ContractMind" in body
+    assert ("Advotech Copilot" in body or "ContractMind" in body)
     assert "## Team" in body
     assert "Live System Stats" in body
 
@@ -358,7 +358,7 @@ async def test_docs_page_open_window(async_db):
 
     resp = await docs_page.docs_page(request=None, token=None, db=async_db)
     assert resp.status_code == 200
-    assert b"ContractMind" in resp.body
+    assert (b"Advotech Copilot" in resp.body or b"ContractMind" in resp.body)
 
 
 @pytest.mark.asyncio
@@ -381,7 +381,7 @@ async def test_docs_page_admin_token_previews_closed_window(async_db):
 
     resp = await docs_page.docs_page(request=None, token=admin_token(admin), db=async_db)
     assert resp.status_code == 200
-    assert b"ContractMind" in resp.body
+    assert (b"Advotech Copilot" in resp.body or b"ContractMind" in resp.body)
 
 
 @pytest.mark.asyncio
