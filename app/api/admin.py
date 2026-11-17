@@ -1220,15 +1220,10 @@ async def update_admin_system_config(
 
     sys_cfg.updated_by = admin.email
 
-    audit = AuditLog(
-        actor_id=admin.id,
-        action=AuditAction.UPDATE_ENTERPRISE_SETTINGS,
-        severity=AuditSeverity.INFO,
-        target_entity="system_config",
-        target_id=1,
-        description=f"Updated Instant Judge Mode: {sys_cfg.instant_judge_mode}, Fixed Lawyer: {sys_cfg.fixed_judge_lawyer_id}",
+    logger.info(
+        f"[ADMIN] Updated Instant Judge Mode: {sys_cfg.instant_judge_mode}, "
+        f"Fixed Lawyer: {sys_cfg.fixed_judge_lawyer_id} by {admin.email}"
     )
-    db.add(audit)
     await db.commit()
     await db.refresh(sys_cfg)
 
