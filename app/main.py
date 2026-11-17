@@ -169,9 +169,11 @@ app.add_middleware(
         "http://localhost:5173",     
         "http://localhost:3001",     
         "https://advotech-copilot.vercel.app",  # ✅ স্পেসিফিক লিংক
-        "https://outliers-omega.vercel.app"     # ✅ স্পেসিফিক লিংক
+        "https://outliers-omega.vercel.app",     # ✅ স্পেসিফিক লিংক
+        "https://legal-copilot-backend-088i.onrender.com",
+        "https://legal-copilot-backend-npq7.onrender.com",
     ],
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origin_regex=r"https://.*\.(vercel\.app|onrender\.com)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
