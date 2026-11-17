@@ -231,7 +231,7 @@ async def root():
         "docs": "/api/docs"
     }
 
-@app.get("/health", tags=["System"])
+@app.api_route("/health", methods=["GET", "HEAD"], tags=["System"])
 async def health_check(db: AsyncSession = Depends(get_db)):
     """
     ✅ FIX: Real-time health check.
