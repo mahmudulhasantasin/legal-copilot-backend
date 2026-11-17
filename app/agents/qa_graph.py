@@ -203,7 +203,7 @@ async def call_remote_mcp_tool(tool_name: str, arguments: dict) -> dict:
     Retries up to 2 times on transport failures (SSE stream disconnects) with a hard
     per-call timeout, so one flaky stream never silently zeroes out live case-law results.
     """
-    MCP_URL = getattr(settings, "MCP_SERVER_URL", "https://bd-legal-mcp-server.onrender.com/mcp")
+    MCP_URL = getattr(settings, "MCP_SERVER_URL", "https://bd-legal-mcp-server-6qo6.onrender.com/mcp")
     timeout_s = float(getattr(settings, "MCP_TOOL_TIMEOUT_S", 40))
     last_err: Exception | None = None
 
