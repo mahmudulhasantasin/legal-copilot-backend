@@ -475,7 +475,12 @@ async def get_my_contracts(
             "executive_summary": m.executive_summary,
             "summary": m.executive_summary,
             "created_at": c.created_at,
-            "is_workspace_shared": c.is_workspace_shared  # ✅ Returns True only for enterprise audits
+            "is_workspace_shared": c.is_workspace_shared,  # ✅ Returns True only for enterprise audits
+            "is_lawyer_verified": m.hitl_status == HITLStatus.COMPLETED,
+            "lawyer_notes": m.lawyer_notes,
+            "lawyer_verified_at": m.lawyer_verified_at.isoformat() if m.lawyer_verified_at else None,
+            "lawyer_signature": m.lawyer_signature,
+            "signed_contract_path": m.signed_contract_path,
         }
         for c, m in rows
     ]
