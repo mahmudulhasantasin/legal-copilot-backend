@@ -18,7 +18,7 @@ async def _call_remote_verify_mcp(act_name: str, section_num: str) -> bool:
     Calls the standalone MCP server on Render to verify a specific statute section.
     Uses the official MCP Client for proper handshaking (initialize + session ID).
     """
-    MCP_URL = getattr(settings, "MCP_SERVER_URL", "https://bd-legal-mcp-server-6qo6.onrender.com/mcp")
+    MCP_URL = getattr(settings, "MCP_SERVER_URL", "https://bd-legal-mcp-server-z1ea.onrender.com/mcp")
 
     # ✅ No try-except here. Let it raise so the caller can fallback to local regex.
     async with streamablehttp_client(MCP_URL) as (read_stream, write_stream, _):
