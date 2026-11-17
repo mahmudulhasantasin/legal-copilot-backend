@@ -509,6 +509,7 @@ async def delete_contract(
 @router.get("/{contract_id}/download")
 async def get_download_url(
     contract_id: int,
+    original: bool = False,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -526,20 +527,25 @@ async def get_download_url(
 
     contract, memo = row
 
-    # ✅ SEC-BOLA-01: explicit access check consistent with the detail/redline
-    # endpoints — owner OR same-enterprise admin/member. Never authorize by
-    # omission (the old query silently mixed filtering with authorization).
+    # ✅ SEC-BOLA-01: explicit access check: owner, enterprise, assigned lawyer, or admin
     is_owner = contract.user_id == current_user.id
     is_same_enterprise = (
         current_user.enterprise_id is not None
         and contract.enterprise_id == current_user.enterprise_id
         and current_user.role in (UserRole.ENTERPRISE_ADMIN, UserRole.ENTERPRISE_MEMBER)
     )
-    if not (is_owner or is_same_enterprise):
+    is_assigned_lawyer = False
+    if current_user.role == UserRole.LAWYER and current_user.lawyer_profile:
+        lid = current_user.lawyer_profile.id
+        if memo and (memo.lawyer_id == lid or memo.hitl_current_offer_id == lid):
+            is_assigned_lawyer = True
+    is_admin = current_user.role == UserRole.ADMIN
+
+    if not (is_owner or is_same_enterprise or is_assigned_lawyer or is_admin):
         raise HTTPException(403, "Access denied.")
 
     file_to_download = contract.file_path
-    if memo and memo.signed_contract_path:
+    if not original and memo and memo.signed_contract_path:
         file_to_download = memo.signed_contract_path
 
     supabase = get_supabase()
@@ -547,7 +553,8 @@ async def get_download_url(
         res = supabase.storage.from_(BUCKET_NAME).create_signed_url(file_to_download, 3600)
         return {
             "download_url": res.get("signedURL") or res.get("signedUrl"),
-            "is_lawyer_verified": bool(memo and memo.signed_contract_path)
+            "is_lawyer_verified": bool(memo and memo.signed_contract_path),
+            "original_filename": contract.original_filename or contract.title,
         }
     except Exception as e:
         logger.error(f"[Supabase] Signed URL failed: {e}")
@@ -658,14 +665,21 @@ async def download_contract_redline_docx(
 
     contract, memo = row
 
-    # Access check: owner OR same-enterprise
+    # Access check: owner, same-enterprise, assigned lawyer, or admin
     is_owner = contract.user_id == current_user.id
     is_same_enterprise = (
         current_user.enterprise_id is not None
         and contract.enterprise_id == current_user.enterprise_id
         and current_user.role in (UserRole.ENTERPRISE_ADMIN, UserRole.ENTERPRISE_MEMBER)
     )
-    if not (is_owner or is_same_enterprise):
+    is_assigned_lawyer = False
+    if current_user.role == UserRole.LAWYER and current_user.lawyer_profile:
+        lid = current_user.lawyer_profile.id
+        if memo and (memo.lawyer_id == lid or memo.hitl_current_offer_id == lid):
+            is_assigned_lawyer = True
+    is_admin = current_user.role == UserRole.ADMIN
+
+    if not (is_owner or is_same_enterprise or is_assigned_lawyer or is_admin):
         raise HTTPException(403, "Access denied.")
 
     lawyer_name: Optional[str] = None

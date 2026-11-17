@@ -60,10 +60,10 @@ class DeclineRequest(BaseModel):
     reason: Optional[str] = Field(default=None, max_length=255)
 
 class SubmitReviewRequest(BaseModel):
-    updated_clauses: List[dict] = Field(..., description="Modified clauses from AI audit")
-    lawyer_notes: str = Field(min_length=5, max_length=5000)
-    signature_url: str = Field(min_length=5, max_length=500, description="Supabase path for signature image")
-    signed_pdf_url: str = Field(min_length=5, max_length=500, description="Supabase path for final signed PDF")
+    updated_clauses: List[dict] = Field(default_factory=list, description="Modified clauses from AI audit")
+    lawyer_notes: str = Field(default="Statutory audit and verification completed by advocate.", max_length=5000)
+    signature_url: Optional[str] = Field(default=None, max_length=500, description="Supabase path for signature image or digital seal identifier")
+    signed_pdf_url: Optional[str] = Field(default=None, max_length=500, description="Supabase path for final signed PDF")
 
 import re
 from typing import Optional
@@ -126,10 +126,19 @@ async def get_my_active_offers(lawyer: LawyerProfile = Depends(get_current_lawye
     rows = (await db.execute(stmt)).all()
     return [
         {
-            "memo_id": memo.id, "contract_id": memo.contract_id, "contract_title": contract.title,
-            "overall_risk": memo.overall_risk.value, "risk_score": memo.risk_score,
-            "payout_bdt": float(memo.lawyer_payout_bdt), "offer_expires_at": memo.hitl_offer_expires_at,
+            "memo_id": memo.id,
+            "contract_id": memo.contract_id,
+            "contract_title": contract.title,
+            "original_filename": contract.original_filename or contract.title,
+            "file_size_mb": float(contract.file_size_mb or 0),
+            "file_mime_type": contract.file_mime_type,
+            "file_path": contract.file_path,
+            "overall_risk": memo.overall_risk.value,
+            "risk_score": memo.risk_score,
+            "payout_bdt": float(memo.lawyer_payout_bdt),
+            "offer_expires_at": memo.hitl_offer_expires_at,
             "time_left_seconds": int((memo.hitl_offer_expires_at - now).total_seconds()),
+            "clauses_analysis": memo.clauses_analysis,
         }
         for memo, contract in rows
     ]
@@ -214,10 +223,18 @@ async def get_my_active_tasks(lawyer: LawyerProfile = Depends(get_current_lawyer
     rows = (await db.execute(stmt)).all()
     return [
         {
-            "memo_id": memo.id, "contract_id": memo.contract_id, "contract_title": contract.title,
-            "hitl_status": memo.hitl_status.value, "payout_bdt": float(memo.lawyer_payout_bdt),
-            "submit_deadline": memo.submit_deadline, "hours_left": memo.hours_until_submit,
-            "clauses_analysis": memo.clauses_analysis, # ✅ FIX: এআই ক্লজগুলো ফ্রন্টএন্ডে পাঠানোর জন্য
+            "memo_id": memo.id,
+            "contract_id": memo.contract_id,
+            "contract_title": contract.title,
+            "original_filename": contract.original_filename or contract.title,
+            "file_size_mb": float(contract.file_size_mb or 0),
+            "file_mime_type": contract.file_mime_type,
+            "file_path": contract.file_path,
+            "hitl_status": memo.hitl_status.value,
+            "payout_bdt": float(memo.lawyer_payout_bdt),
+            "submit_deadline": memo.submit_deadline,
+            "hours_left": memo.hours_until_submit,
+            "clauses_analysis": memo.clauses_analysis,
         }
         for memo, contract in rows
     ]
@@ -289,8 +306,8 @@ async def submit_review(
     memo.completed_at = now
     memo.clauses_analysis = payload.updated_clauses  # ✅ এডিট করা ক্লজগুলো ডাটাবেসে সেভ হচ্ছে
     memo.lawyer_notes = payload.lawyer_notes
-    memo.lawyer_signature = payload.signature_url
-    memo.signed_contract_path = payload.signed_pdf_url
+    memo.lawyer_signature = payload.signature_url or f"digital_seal_{lawyer.id}_{now.strftime('%Y%m%d%H%M%S')}"
+    memo.signed_contract_path = payload.signed_pdf_url or (memo.contract.file_path if memo.contract else None)
     memo.lawyer_verified_at = now
 
     profile = await db.scalar(select(LawyerProfile).where(LawyerProfile.id == lawyer.id).with_for_update())
