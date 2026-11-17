@@ -90,6 +90,8 @@ class RequestVerificationResponse(BaseModel):
     memo_id: int
     message: str
     credits_deducted: int
+    assigned_lawyer_id: Optional[int] = None
+    assigned_lawyer_name: Optional[str] = None
 
 
 # ──────────────────────────────────────────────────────────
@@ -416,11 +418,21 @@ async def request_lawyer_verification(
 
     await db.commit()
 
+    assigned_name = None
+    if memo.hitl_current_offer_id:
+        lp = await db.scalar(select(LawyerProfile).where(LawyerProfile.id == memo.hitl_current_offer_id))
+        if lp:
+            lu = await db.scalar(select(User).where(User.id == lp.user_id))
+            if lu:
+                assigned_name = lu.full_name
+
     return RequestVerificationResponse(
         status="success",
         memo_id=memo.id,
-        message="Verification requested. A lawyer has been notified.",
-        credits_deducted=cost_credits
+        message=f"Verification requested. Assigned to {assigned_name}." if assigned_name else "Verification requested. A lawyer has been notified.",
+        credits_deducted=cost_credits,
+        assigned_lawyer_id=memo.hitl_current_offer_id,
+        assigned_lawyer_name=assigned_name,
     )
 
 

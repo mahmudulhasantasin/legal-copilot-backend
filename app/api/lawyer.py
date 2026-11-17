@@ -22,6 +22,7 @@ from app.models.user import (
 )
 from app.models.lawyer import LawyerProfile, LawyerStatus, LawyerAvailability
 from app.models.memo import ContractMemo, Contract, HITLStatus
+from app.models.system_config import SystemConfig
 from app.models.chat import ChatSession, ChatMode
 from app.services.email_service import (
     send_client_lawyer_assigned_email,
@@ -153,8 +154,11 @@ async def accept_offer(
         await db.commit()
         raise HTTPException(400, "Offer expired. Task has been re-queued.")
 
+    sys_cfg = await db.scalar(select(SystemConfig).where(SystemConfig.id == 1))
+    is_judge_mode = bool(sys_cfg and sys_cfg.instant_judge_mode)
+
     profile = await db.scalar(select(LawyerProfile).where(LawyerProfile.id == lawyer.id).with_for_update())
-    if profile.active_task_count >= profile.max_concurrent_tasks:
+    if profile.active_task_count >= profile.max_concurrent_tasks and not is_judge_mode:
         raise HTTPException(400, "You have reached your maximum concurrent tasks limit.")
 
     profile.active_task_count += 1

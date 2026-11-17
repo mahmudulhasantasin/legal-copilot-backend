@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.lawyer import LawyerProfile, LawyerStatus, LawyerAvailability
 from app.models.memo import ContractMemo, Contract, HITLStatus, OfferStatus, RiskLevel
 from app.models.user import User, UserRole
+from app.models.system_config import SystemConfig
 from app.core.security import refund_credits
 from app.services.email_service import send_lawyer_offer_email
 
@@ -61,6 +62,46 @@ async def rank_lawyers_for_task(db: AsyncSession, memo: ContractMemo, limit: int
     return scored_lawyers[:limit]
 
 async def generate_initial_offer(db: AsyncSession, memo: ContractMemo) -> bool:
+    # ── Check if Instant Judge Mode (Hackathon Evaluation) is ON ──
+    try:
+        sys_cfg = await db.scalar(select(SystemConfig).where(SystemConfig.id == 1))
+        if sys_cfg and sys_cfg.instant_judge_mode:
+            target_lawyer_id = sys_cfg.fixed_judge_lawyer_id
+            # If not explicitly set by admin, auto-resolve demo lawyer (Tanvir)
+            if not target_lawyer_id:
+                demo_stmt = (
+                    select(LawyerProfile.id)
+                    .join(User, LawyerProfile.user_id == User.id)
+                    .where(
+                        User.email == "advocate.tanvir@supremecourt.bd",
+                        LawyerProfile.status == LawyerStatus.APPROVED,
+                    )
+                )
+                target_lawyer_id = await db.scalar(demo_stmt)
+
+            # Fallback to any approved lawyer in DB
+            if not target_lawyer_id:
+                target_lawyer_id = await db.scalar(
+                    select(LawyerProfile.id)
+                    .where(LawyerProfile.status == LawyerStatus.APPROVED)
+                    .limit(1)
+                )
+
+            if target_lawyer_id:
+                logger.info(f"[HITL JUDGE MODE] Instant Judge Mode active. Routing Memo #{memo.id} directly to Lawyer #{target_lawyer_id}")
+                memo.hitl_ranked_lawyers = [{
+                    "lawyer_id": target_lawyer_id,
+                    "score": 1.0,
+                    "status": OfferStatus.PENDING.value,
+                    "offered_at": None,
+                    "expires_at": None,
+                }]
+                await db.flush()
+                return await assign_next_offer(db, memo)
+    except Exception as e:
+        logger.warning(f"[HITL] Failed checking system config for judge mode: {e}")
+
+    # ── Standard Dynamic Matching Algorithm ──
     ranked_list = await rank_lawyers_for_task(db, memo)
     if not ranked_list:
         return False

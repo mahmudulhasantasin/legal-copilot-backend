@@ -25,6 +25,7 @@ from app.models.user import (
     WithdrawalRequest, WithdrawalStatus,
 )
 from app.models.lawyer import LawyerProfile, LawyerStatus
+from app.models.system_config import SystemConfig
 from app.models.playbook import Enterprise, EnterpriseStatus, CreditPackage
 from app.models.audit import (
     Payment, PaymentMethod, PaymentStatus,
@@ -1119,4 +1120,121 @@ async def financials_dashboard(
                 total_revenue_bdt - paid_payouts_bdt
             ),
         },
+    }
+
+
+# ──────────────────────────────────────────────────────────
+# SYSTEM CONFIG (INSTANT JUDGE MODE)
+# ──────────────────────────────────────────────────────────
+
+class UpdateSystemConfigRequest(BaseModel):
+    instant_judge_mode: Optional[bool] = None
+    fixed_judge_lawyer_id: Optional[int] = None
+
+
+@router.get("/system-config")
+async def get_admin_system_config(
+    admin: User = Depends(check_is_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns platform settings including Instant Judge Mode status,
+    the currently fixed judge lawyer, and all approved lawyers to choose from.
+    """
+    sys_cfg = await db.scalar(select(SystemConfig).where(SystemConfig.id == 1))
+    if not sys_cfg:
+        sys_cfg = SystemConfig(id=1, instant_judge_mode=False)
+        db.add(sys_cfg)
+        await db.commit()
+        await db.refresh(sys_cfg)
+
+    # Fetch all approved lawyers
+    stmt = (
+        select(LawyerProfile, User)
+        .join(User, LawyerProfile.user_id == User.id)
+        .where(LawyerProfile.status == LawyerStatus.APPROVED)
+        .order_by(User.full_name.asc())
+    )
+    lawyers_rows = (await db.execute(stmt)).all()
+    approved_lawyers = [
+        {
+            "lawyer_id": lp.id,
+            "user_id": u.id,
+            "name": u.full_name,
+            "email": u.email,
+            "bar_council_id": lp.bar_council_id,
+            "experience_years": lp.experience_years,
+        }
+        for lp, u in lawyers_rows
+    ]
+
+    fixed_name = None
+    fixed_email = None
+    if sys_cfg.fixed_judge_lawyer_id:
+        fixed_match = next((l for l in approved_lawyers if l["lawyer_id"] == sys_cfg.fixed_judge_lawyer_id), None)
+        if fixed_match:
+            fixed_name = fixed_match["name"]
+            fixed_email = fixed_match["email"]
+
+    return {
+        "instant_judge_mode": bool(sys_cfg.instant_judge_mode),
+        "fixed_judge_lawyer_id": sys_cfg.fixed_judge_lawyer_id,
+        "fixed_judge_lawyer_name": fixed_name,
+        "fixed_judge_lawyer_email": fixed_email,
+        "updated_at": sys_cfg.updated_at.isoformat() if sys_cfg.updated_at else None,
+        "updated_by": sys_cfg.updated_by,
+        "approved_lawyers": approved_lawyers,
+    }
+
+
+@router.patch("/system-config")
+async def update_admin_system_config(
+    payload: UpdateSystemConfigRequest,
+    admin: User = Depends(check_is_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Toggles Instant Judge Mode (ON/OFF) and sets the target fixed lawyer.
+    """
+    sys_cfg = await db.scalar(select(SystemConfig).where(SystemConfig.id == 1))
+    if not sys_cfg:
+        sys_cfg = SystemConfig(id=1)
+        db.add(sys_cfg)
+
+    if payload.instant_judge_mode is not None:
+        sys_cfg.instant_judge_mode = payload.instant_judge_mode
+
+    if payload.fixed_judge_lawyer_id is not None:
+        if payload.fixed_judge_lawyer_id > 0:
+            lp = await db.scalar(
+                select(LawyerProfile).where(
+                    LawyerProfile.id == payload.fixed_judge_lawyer_id,
+                    LawyerProfile.status == LawyerStatus.APPROVED,
+                )
+            )
+            if not lp:
+                raise HTTPException(400, "Selected lawyer does not exist or is not approved.")
+            sys_cfg.fixed_judge_lawyer_id = payload.fixed_judge_lawyer_id
+        else:
+            sys_cfg.fixed_judge_lawyer_id = None
+
+    sys_cfg.updated_by = admin.email
+
+    audit = AuditLog(
+        actor_id=admin.id,
+        action=AuditAction.UPDATE_ENTERPRISE_SETTINGS,
+        severity=AuditSeverity.INFO,
+        target_entity="system_config",
+        target_id=1,
+        description=f"Updated Instant Judge Mode: {sys_cfg.instant_judge_mode}, Fixed Lawyer: {sys_cfg.fixed_judge_lawyer_id}",
+    )
+    db.add(audit)
+    await db.commit()
+    await db.refresh(sys_cfg)
+
+    return {
+        "status": "success",
+        "message": f"Instant Judge Mode is now {'ON' if sys_cfg.instant_judge_mode else 'OFF'}",
+        "instant_judge_mode": sys_cfg.instant_judge_mode,
+        "fixed_judge_lawyer_id": sys_cfg.fixed_judge_lawyer_id,
     }

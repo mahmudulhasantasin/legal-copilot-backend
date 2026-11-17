@@ -91,6 +91,9 @@ from app.models.docs_config import (
     DocsTeamMember,
 )
 
+# 10. System Configuration (Instant Judge Mode & Demo Flags)
+from app.models.system_config import SystemConfig
+
 
 # ──────────────────────────────────────────────────────────
 # PUBLIC API
@@ -158,4 +161,7 @@ __all__ = [
     "DocsConfig",
     "DocsVisibility",
     "DocsTeamMember",
+
+    # -- System Config --
+    "SystemConfig",
 ]

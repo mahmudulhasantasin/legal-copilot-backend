@@ -118,6 +118,9 @@ async def lifespan(app: FastAPI):
                 "INSERT INTO credit_packages (name, tier, description, price_bdt, base_credits, bonus_credits, applies_to, is_active, display_order, badge_text, created_at) SELECT 'Enterprise Growth', 'ENTERPRISE', 'For growing legal teams (up to 5 members).', 5000.00, 5000, 500, 'ENTERPRISE', TRUE, 4, 'Team Choice', NOW() WHERE NOT EXISTS (SELECT 1 FROM credit_packages WHERE name = 'Enterprise Growth');",
                 "INSERT INTO credit_packages (name, tier, description, price_bdt, base_credits, bonus_credits, applies_to, is_active, display_order, badge_text, created_at) SELECT 'Enterprise Scale', 'ENTERPRISE', 'For corporate legal teams (5-10 members).', 10000.00, 8000, 3500, 'ENTERPRISE', TRUE, 5, 'Most Popular', NOW() WHERE NOT EXISTS (SELECT 1 FROM credit_packages WHERE name = 'Enterprise Scale' OR name = 'Enterprise Pack');",
                 "UPDATE credit_packages SET name = 'Enterprise Scale', description = 'For corporate legal teams (5-10 members).', price_bdt = 10000.00, base_credits = 8000, bonus_credits = 3500, badge_text = 'Most Popular' WHERE name = 'Enterprise Pack';",
+                # ── System Config table (Instant Judge Mode) ──
+                "CREATE TABLE IF NOT EXISTS system_configs (id INTEGER PRIMARY KEY DEFAULT 1, instant_judge_mode BOOLEAN DEFAULT FALSE NOT NULL, fixed_judge_lawyer_id INTEGER REFERENCES lawyer_profiles(id) ON DELETE SET NULL, updated_at TIMESTAMPTZ DEFAULT NOW(), updated_by VARCHAR(120));",
+                "INSERT INTO system_configs (id, instant_judge_mode) SELECT 1, FALSE WHERE NOT EXISTS (SELECT 1 FROM system_configs WHERE id = 1);",
             ]
             for sql in migration_sqls:
                 try:

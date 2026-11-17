@@ -1,13 +1,53 @@
 # app/api/platform.py
+import logging
+from typing import Optional
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
+from app.models.lawyer import LawyerProfile
+from app.models.system_config import SystemConfig
 from app.services.metrics import get_metrics_summary
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/platform", tags=["Platform & Pitch"])
+
+# ──────────────────────────────────────────────────────────
+# 0. SYSTEM STATUS (Instant Judge Mode)
+# ──────────────────────────────────────────────────────────
+
+@router.get("/system-status")
+async def get_system_status(db: AsyncSession = Depends(get_db)):
+    """
+    Public system status endpoint.
+    Used by frontend (login modal, landing) to determine if Instant Judge Mode is active.
+    """
+    instant_judge_mode = False
+    judge_lawyer_name = None
+    try:
+        sys_cfg = await db.scalar(select(SystemConfig).where(SystemConfig.id == 1))
+        if sys_cfg:
+            instant_judge_mode = bool(sys_cfg.instant_judge_mode)
+            if instant_judge_mode and sys_cfg.fixed_judge_lawyer_id:
+                lp = await db.scalar(
+                    select(LawyerProfile).where(LawyerProfile.id == sys_cfg.fixed_judge_lawyer_id)
+                )
+                if lp:
+                    user = await db.scalar(select(User).where(User.id == lp.user_id))
+                    if user:
+                        judge_lawyer_name = user.full_name
+    except Exception as e:
+        logger.warning(f"Error fetching system status: {e}")
+
+    return {
+        "instant_judge_mode": instant_judge_mode,
+        "judge_lawyer_name": judge_lawyer_name or "Advocate Tanvir Ahmed",
+    }
+
 
 # ──────────────────────────────────────────────────────────
 # 1. LIVE KPI METRICS
