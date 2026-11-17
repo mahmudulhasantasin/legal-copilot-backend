@@ -239,6 +239,57 @@ async def get_my_active_tasks(lawyer: LawyerProfile = Depends(get_current_lawyer
         for memo, contract in rows
     ]
 
+@router.get("/completed")
+async def get_my_completed_tasks(
+    limit: int = 50,
+    offset: int = 0,
+    lawyer: LawyerProfile = Depends(get_current_lawyer),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Returns all contracts verified, sealed, and completed by this lawyer.
+    Stored permanently in the lawyer's archive.
+    """
+    stmt = (
+        select(ContractMemo, Contract, User)
+        .join(Contract, ContractMemo.contract_id == Contract.id)
+        .join(User, Contract.user_id == User.id)
+        .where(
+            ContractMemo.lawyer_id == lawyer.id,
+            ContractMemo.hitl_status == HITLStatus.COMPLETED,
+        )
+        .order_by(desc(ContractMemo.completed_at))
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = (await db.execute(stmt)).all()
+    return [
+        {
+            "memo_id": memo.id,
+            "contract_id": memo.contract_id,
+            "contract_title": contract.title,
+            "original_filename": contract.original_filename or contract.title,
+            "client_name": client.full_name or "Enterprise Client",
+            "client_email": client.email,
+            "client_phone": client.phone or "+880 1700-000000",
+            "file_size_mb": float(contract.file_size_mb or 0),
+            "file_mime_type": contract.file_mime_type,
+            "file_path": contract.file_path,
+            "hitl_status": memo.hitl_status.value,
+            "payout_bdt": float(memo.lawyer_payout_bdt),
+            "completed_at": memo.completed_at.isoformat() if memo.completed_at else None,
+            "verified_date_en": memo.completed_at.strftime("%b %d, %Y") if memo.completed_at else "Recently",
+            "verified_date_bn": memo.completed_at.strftime("%d/%m/%Y") if memo.completed_at else "সম্প্রতি",
+            "risk_score": memo.risk_score,
+            "overall_risk": memo.overall_risk.value,
+            "lawyer_notes": memo.lawyer_notes,
+            "signature_url": memo.lawyer_signature,
+            "signed_contract_path": memo.signed_contract_path,
+            "clauses_analysis": memo.clauses_analysis or [],
+        }
+        for memo, contract, client in rows
+    ]
+
 # ✅ NEW: Upload proof endpoint
 @router.post("/upload-proof")
 async def upload_lawyer_proof(
