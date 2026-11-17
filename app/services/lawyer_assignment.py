@@ -112,10 +112,30 @@ async def generate_initial_offer(db: AsyncSession, memo: ContractMemo) -> bool:
 async def assign_next_offer(db: AsyncSession, memo: ContractMemo) -> bool:
     now = datetime.now(timezone.utc)
     ranked_list = memo.hitl_ranked_lawyers or []
-    
+    pickable_statuses = [OfferStatus.PENDING.value, OfferStatus.EXPIRED.value, OfferStatus.DECLINED.value]
+
+    # ── Validate candidates against live lawyer state ──
+    # A lawyer may have been deleted / unapproved after the list was ranked;
+    # offering to them violates the hitl_current_offer_id FK (→ lawyer_profiles).
+    candidate_ids = [item["lawyer_id"] for item in ranked_list if item["status"] in pickable_statuses]
+    eligible_ids: set = set()
+    if candidate_ids:
+        rows = await db.execute(
+            select(LawyerProfile.id).where(
+                LawyerProfile.id.in_(candidate_ids),
+                LawyerProfile.status == LawyerStatus.APPROVED,
+                LawyerProfile.availability != LawyerAvailability.ON_LEAVE,
+            )
+        )
+        eligible_ids = set(rows.scalars().all())
+
     next_lawyer = None
     for item in ranked_list:
-        if item["status"] in [OfferStatus.PENDING.value, OfferStatus.EXPIRED.value, OfferStatus.DECLINED.value]:
+        if item["status"] in pickable_statuses:
+            if item["lawyer_id"] not in eligible_ids:
+                if item["status"] == OfferStatus.PENDING.value:
+                    item["status"] = OfferStatus.SKIPPED.value
+                continue
             next_lawyer = item
             break
 
@@ -124,6 +144,7 @@ async def assign_next_offer(db: AsyncSession, memo: ContractMemo) -> bool:
         memo.hitl_status = HITLStatus.QUEUED_FOR_LAWYER
         memo.hitl_current_offer_id = None
         memo.hitl_offer_expires_at = None
+        attributes.flag_modified(memo, "hitl_ranked_lawyers")
         await db.commit()
         return False
 
