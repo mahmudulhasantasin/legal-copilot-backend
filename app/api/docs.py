@@ -33,6 +33,7 @@ from app.core.security import get_current_user, get_current_user_optional, requi
 from app.models.user import User, UserRole
 from app.models.docs_config import DocsConfig, DocsTeamMember, DocsVisibility
 from app.services.docs_content import merged_content, build_markdown
+from app.services.architecture_data import get_architecture_systems
 
 logger = logging.getLogger(__name__)
 
@@ -297,6 +298,44 @@ async def get_live_stats(
 
     await db.commit()
     return stats
+
+
+@router.get("/architecture")
+async def get_architecture(
+    system: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """
+    Public interactive enterprise architecture explorer endpoint.
+    Returns typed architecture topologies, nodes, connections, and execution steps
+    grounded directly in the backend implementation.
+    Pass ?system=chat|contract|lawyer|mcp for a specific subsystem.
+    """
+    cfg = await _get_config(db)
+    await db.commit()
+    _gate(cfg, current_user)
+
+    systems = get_architecture_systems()
+    if system:
+        if system not in systems:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Subsystem '{system}' not found. Available systems: {list(systems.keys())}",
+            )
+        return {
+            "status": "success",
+            "version": "1.0.0",
+            "system_id": system,
+            "data": systems[system],
+        }
+
+    return {
+        "status": "success",
+        "version": "1.0.0",
+        "available_systems": list(systems.keys()),
+        "systems": systems,
+    }
 
 
 # ──────────────────────────────────────────────────────────

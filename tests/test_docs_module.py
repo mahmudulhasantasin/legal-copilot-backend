@@ -402,3 +402,62 @@ async def test_docs_page_rejects_non_admin_token(async_db):
 
     resp = await docs_page.docs_page(request=None, token=admin_token(member), db=async_db)
     assert resp.status_code == 403
+
+
+# ── Interactive Architecture Explorer Tests ──
+
+@pytest.mark.asyncio
+async def test_architecture_endpoint_all_systems(async_db):
+    cfg = await docs_api._get_config(async_db)
+    cfg.visibility = DocsVisibility.ON
+    await async_db.commit()
+
+    resp = await docs_api.get_architecture(system=None, db=async_db, current_user=None)
+    assert resp["status"] == "success"
+    assert "systems" in resp
+    assert set(resp["available_systems"]) == {"chat", "contract", "lawyer", "mcp"}
+
+    # Verify each system contains real nodes, connections, execution steps and metrics
+    for sys_id in ("chat", "contract", "lawyer", "mcp"):
+        sys_data = resp["systems"][sys_id]
+        assert "nodes" in sys_data
+        assert "connections" in sys_data
+        assert "execution_steps" in sys_data
+        assert "metrics" in sys_data
+        assert len(sys_data["nodes"]) >= 5
+        assert len(sys_data["execution_steps"]) >= 5
+
+
+@pytest.mark.asyncio
+async def test_architecture_endpoint_single_system(async_db):
+    cfg = await docs_api._get_config(async_db)
+    cfg.visibility = DocsVisibility.ON
+    await async_db.commit()
+
+    resp = await docs_api.get_architecture(system="contract", db=async_db, current_user=None)
+    assert resp["status"] == "success"
+    assert resp["system_id"] == "contract"
+    assert resp["data"]["system_id"] == "contract"
+    assert "Contract Audit Pipeline" in resp["data"]["title"]
+
+
+@pytest.mark.asyncio
+async def test_architecture_endpoint_invalid_system(async_db):
+    cfg = await docs_api._get_config(async_db)
+    cfg.visibility = DocsVisibility.ON
+    await async_db.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        await docs_api.get_architecture(system="unknown_subsystem", db=async_db, current_user=None)
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_architecture_merged_content_has_systems(async_db):
+    cfg = await docs_api._get_config(async_db)
+    content = docs_api.merged_content(cfg)
+    assert "architecture_systems" in content
+    assert "chat" in content["architecture_systems"]
+    assert "contract" in content["architecture_systems"]
+    assert "lawyer" in content["architecture_systems"]
+    assert "mcp" in content["architecture_systems"]

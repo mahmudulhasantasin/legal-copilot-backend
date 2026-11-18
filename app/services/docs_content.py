@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from app.services.architecture_data import get_architecture_systems
+
 # ──────────────────────────────────────────────────────────
 # PITCH DECK (YC-style)
 # ──────────────────────────────────────────────────────────
@@ -292,6 +294,7 @@ def merged_content(cfg) -> Dict[str, Any]:
         "roadmap": roadmap,
         "changelog": changelog,
         "custom_sections": custom,
+        "architecture_systems": get_architecture_systems(),
     }
 
 
