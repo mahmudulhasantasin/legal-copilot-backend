@@ -91,9 +91,9 @@ def get_llm(prefer_chat_model: bool = False) -> BaseChatModel:
     """
     Returns the production LLM with multi-tier automatic fallback.
     Supported providers:
-      1. Gemini: Google Gemini API (gemini-3.5-flash-lite)
-      2. ZAI: Zhipu AI / GLM OpenAI-compatible API (e.g. glm-4-flash)
-      3. Groq: Groq Cloud API (qwen/qwen3.8-27b)
+      1. Gemini: Google Gemini API (gemini-3.5-flash-lite -> gemini-3-flash-preview -> gemini-3.1-flash-lite)
+      2. Groq: Groq Cloud API (qwen/qwen3.8-27b)
+      3. ZAI: Zhipu AI / GLM OpenAI-compatible API (last-resort fallback)
     """
     gemini_key = _resolve_key("GEMINI_API_KEY", fallback_env="GOOGLE_API_KEY")
     gemini_m1 = (
@@ -218,8 +218,8 @@ def get_llm(prefer_chat_model: bool = False) -> BaseChatModel:
     elif "gemini" in available:
         providers_list.append(available.pop("gemini"))
 
-    # Append remaining available fallback providers in order: Gemini -> ZAI -> Groq
-    for key in ("gemini", "zai", "groq"):
+    # Append remaining available fallback providers in order: Gemini -> Groq -> ZAI (ZAI is the last resort)
+    for key in ("gemini", "groq", "zai"):
         if key in available:
             providers_list.append(available.pop(key))
 
@@ -227,5 +227,5 @@ def get_llm(prefer_chat_model: bool = False) -> BaseChatModel:
 
 
 def get_chat_llm() -> BaseChatModel:
-    """Returns the LLM configured for legal chat (Gemini primary -> ZAI fallback -> Groq fallback)."""
+    """Returns the LLM configured for legal chat (Gemini primary -> Groq fallback -> ZAI last-resort fallback)."""
     return get_llm()
