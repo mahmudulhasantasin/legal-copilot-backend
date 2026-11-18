@@ -299,21 +299,40 @@ async def analyze_risk_node(state: dict) -> dict:
             parsed = json.loads(text)
             return parsed if isinstance(parsed, dict) else None
         except Exception:
-            return None
+            pass
+
+        # ✅ Truncation recovery: if LLM output was capped mid-stream (finish_reason=LENGTH)
+        # cut back to the last fully-closed clause object in detected_risks and balance brackets.
+        last_obj_end = text.rfind("}")
+        if last_obj_end != -1:
+            prefix = text[:last_obj_end + 1]
+            open_brackets = prefix.count("[") - prefix.count("]")
+            open_braces = prefix.count("{") - prefix.count("}")
+            closing = ("]" * max(0, open_brackets)) + ("}" * max(0, open_braces))
+            try:
+                parsed = json.loads(prefix + closing)
+                if isinstance(parsed, dict):
+                    logger.info("[analyze_risk_node] Successfully recovered truncated JSON response.")
+                    return parsed
+            except Exception:
+                pass
+        return None
 
     analysis: Optional[Dict[str, Any]] = None
     finish_reason: Optional[str] = None
     llm_failed = False
     try:
         llm = get_llm()
-        # Retry ladder: full audit → reduced batch → compact prompt.
-        # Every attempt is individually guarded so one provider error never skips
-        # the remaining ladder rungs (the compact rung is sized to fit small
-        # free-tier fallback models' INPUT limits, e.g. Groq ITPM 7000).
+        # Retry ladder: full batch → compact prompt (sized for small free-tier output budgets e.g. Groq 950 OTPM).
         attempt_prompts = [_build_prompt(structured_clauses)]
-        if len(structured_clauses) > 8:
-            attempt_prompts.append(_build_prompt(structured_clauses[:8]))
-        attempt_prompts.append(_build_prompt(structured_clauses[:5], compact=True))
+        if len(structured_clauses) <= 3:
+            attempt_prompts.append(_build_prompt(structured_clauses, compact=True))
+            if len(structured_clauses) > 1:
+                attempt_prompts.append(_build_prompt(structured_clauses[:1], compact=True))
+        else:
+            if len(structured_clauses) > 8:
+                attempt_prompts.append(_build_prompt(structured_clauses[:8]))
+            attempt_prompts.append(_build_prompt(structured_clauses[:3], compact=True))
 
         for attempt_idx, attempt_prompt in enumerate(attempt_prompts, start=1):
             try:

@@ -408,13 +408,16 @@ async def analyze_contract_risk_async(
         retrieved_statutes = []
 
     # Step 4: Perspective-Aware LLM Audit
-    # Batch clauses if text exceeds CHUNK_SIZE, else audit all clauses together
+    # Batch clauses into small chunks (max 3 clauses per batch) so free-tier fallback
+    # models with strict output caps (e.g. Groq 950 OTPM cap) never hit finish_reason=LENGTH.
     all_detected_risks: List[Dict[str, Any]] = []
     overall_best_score = "LOW"
     llm_degraded = False
 
-    if len(text) <= CHUNK_SIZE or len(clauses_ast) <= 15:
-        # Single high-context cohesive audit
+    AUDIT_BATCH_SIZE = 3
+
+    if len(clauses_ast) <= AUDIT_BATCH_SIZE:
+        # Single small cohesive audit (<= 3 clauses or unparsed contract text)
         node_res = await analyze_risk_node({
             "contract_text": text,
             "structured_clauses": clauses_ast,
@@ -429,21 +432,34 @@ async def analyze_contract_risk_async(
         if analysis.get("llm_failed"):
             llm_degraded = True
     else:
-        # Clause-batched audit to respect token limits while preserving clause boundaries
-        batch_size = max(1, len(clauses_ast) // 2)
-        clause_batches = [clauses_ast[i:i + batch_size] for i in range(0, len(clauses_ast), batch_size)]
+        # Clause-batched audit: at most 3 clauses per LLM call to guarantee
+        # that free-tier models (Groq 950 tokens) stay well below their output limit (~300 tokens).
+        clause_batches = [
+            clauses_ast[i:i + AUDIT_BATCH_SIZE]
+            for i in range(0, len(clauses_ast), AUDIT_BATCH_SIZE)
+        ]
+        logger.info(
+            f"[contract_graph] Auditing {len(clauses_ast)} clauses across "
+            f"{len(clause_batches)} batches (max {AUDIT_BATCH_SIZE} clauses/batch for Groq OTPM safety)."
+        )
+
+        audit_sem = asyncio.Semaphore(2)
 
         async def _audit_batch(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-            batch_text = "\n\n".join([f"Clause {c.get('source_clause_number')}: {c.get('clause_text')}" for c in batch])
-            res = await analyze_risk_node({
-                "contract_text": batch_text,
-                "structured_clauses": batch,
-                "retrieved_statutes": retrieved_statutes,
-                "playbook_rules": rules,
-                "audited_for": audited_for_clean,
-                "domain_name": domain_name,
-            })
-            return res.get("analysis", {})
+            async with audit_sem:
+                batch_text = "\n\n".join([
+                    f"Clause {c.get('source_clause_number', idx)}: {c.get('clause_text', '')}"
+                    for idx, c in enumerate(batch, 1)
+                ])
+                res = await analyze_risk_node({
+                    "contract_text": batch_text,
+                    "structured_clauses": batch,
+                    "retrieved_statutes": retrieved_statutes,
+                    "playbook_rules": rules,
+                    "audited_for": audited_for_clean,
+                    "domain_name": domain_name,
+                })
+                return res.get("analysis", {})
 
         batch_results = await asyncio.gather(*[_audit_batch(b) for b in clause_batches])
         for b_res in batch_results:

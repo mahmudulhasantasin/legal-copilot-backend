@@ -42,6 +42,11 @@ class Settings(BaseSettings):
 
     # AI Model Keys
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    # Gemini 3-tier waterfall chain: 1st -> 2nd -> 3rd
+    GEMINI_PRIMARY_MODEL: str = os.getenv("GEMINI_PRIMARY_MODEL", "gemini-3.5-flash-lite")
+    GEMINI_SECONDARY_MODEL: str = os.getenv("GEMINI_SECONDARY_MODEL", "gemini-3-flash-preview")
+    GEMINI_TERTIARY_MODEL: str = os.getenv("GEMINI_TERTIARY_MODEL", "gemini-3.1-flash-lite")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     # ✅ Groq free tier enforces an OTPM (output tokens/min) cap of 1000 — max_tokens must stay below it
     GROQ_MAX_TOKENS: int = int(os.getenv("GROQ_MAX_TOKENS", "950"))

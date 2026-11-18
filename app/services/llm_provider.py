@@ -96,6 +96,13 @@ def get_llm(prefer_chat_model: bool = False) -> BaseChatModel:
       3. Groq: Groq Cloud API (qwen/qwen3.8-27b)
     """
     gemini_key = _resolve_key("GEMINI_API_KEY", fallback_env="GOOGLE_API_KEY")
+    gemini_m1 = (
+        _resolve_key("GEMINI_PRIMARY_MODEL")
+        or _resolve_key("GEMINI_MODEL")
+        or "gemini-3.5-flash-lite"
+    )
+    gemini_m2 = _resolve_key("GEMINI_SECONDARY_MODEL") or "gemini-3-flash-preview"
+    gemini_m3 = _resolve_key("GEMINI_TERTIARY_MODEL") or "gemini-3.1-flash-lite"
     groq_key = _resolve_key("GROQ_API_KEY")
     zai_key = _resolve_key("ZAI_API_KEY")
     zai_base_url = _resolve_key("ZAI_BASE_URL") or "https://open.bigmodel.cn/api/paas/v4/"
@@ -114,18 +121,29 @@ def get_llm(prefer_chat_model: bool = False) -> BaseChatModel:
     zai_llm = None
     groq_llm = None
 
-    # 1. Gemini
+    # 1. Gemini (3-tier auto-fallback waterfall: 3.5-flash-lite -> 3-flash-preview -> 3.1-flash-lite)
     if gemini_key:
         try:
-            gemini_llm = ChatGoogleGenerativeAI(
-                model="gemini-3.5-flash-lite",
-                google_api_key=gemini_key,
-                temperature=0.1,
-                max_output_tokens=8000,
-                max_retries=2,
-                timeout=90.0,
+            gemini_chain_list = []
+            seen_models = set()
+            for m_name in [gemini_m1, gemini_m2, gemini_m3]:
+                if m_name and m_name not in seen_models:
+                    seen_models.add(m_name)
+                    m_llm = ChatGoogleGenerativeAI(
+                        model=m_name,
+                        google_api_key=gemini_key,
+                        temperature=0.1,
+                        max_output_tokens=8000,
+                        max_retries=1,
+                        timeout=60.0,
+                    )
+                    gemini_chain_list.append((f"Gemini({m_name})", m_llm))
+
+            gemini_llm = _chain_llms(gemini_chain_list)
+            logger.info(
+                "Gemini multi-tier waterfall initialized: %s (instant switch on busy/503).",
+                " -> ".join(m[0] for m in gemini_chain_list),
             )
-            logger.info("Gemini primary LLM initialized successfully.")
         except Exception as exc:
             logger.warning(f"Failed to initialize Gemini: {exc}")
     else:
