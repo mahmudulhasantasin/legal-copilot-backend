@@ -289,3 +289,29 @@ def test_ingestion_upload_filename_sanitized():
     ext = ".py"
     assert _re.fullmatch(r"\.[A-Za-z0-9]{1,10}", ext) is not None
     assert _re.fullmatch(r"\.[A-Za-z0-9]{1,10}", "../../x") is None
+
+
+# ── SEC-PII-01: Contract upload PII sanitization ────────────────────────────
+
+def test_contract_sanitize_pii_masks_phones_emails_and_nids():
+    from app.services.ingestion import sanitize_pii
+    text = (
+        "EMPLOYMENT AGREEMENT\n"
+        "Employee: Shamim Ahmed\n"
+        "NID: 19901234567890123\n"
+        "Phone: +8801712345678\n"
+        "Email: employee@nexustech.com\n"
+        "Governing Law: Contract Act, 1872."
+    )
+    scrubbed, stats = sanitize_pii(text)
+    assert "[REDACTED_PARTY]" in scrubbed
+    assert "Shamim Ahmed" not in scrubbed
+    assert "[REDACTED_NID]" in scrubbed
+    assert "19901234567890123" not in scrubbed
+    assert "[REDACTED_PHONE]" in scrubbed
+    assert "+8801712345678" not in scrubbed
+    assert "[REDACTED_EMAIL]" in scrubbed
+    assert "employee@nexustech.com" not in scrubbed
+    assert "1872" in scrubbed
+    assert stats["total"] >= 4
+

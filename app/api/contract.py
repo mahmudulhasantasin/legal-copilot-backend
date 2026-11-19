@@ -22,7 +22,7 @@ from app.models.user import User, UserRole, CreditTxType
 from app.models.lawyer import LawyerProfile           # ✅ NEW — for GET /{id}
 from app.models.memo import Contract, ContractMemo, RiskLevel, HITLStatus
 from app.models.playbook import CompanyPlaybook
-from app.services.ingestion import extract_text_from_file
+from app.services.ingestion import extract_text_from_file, sanitize_pii
 from app.agents.contract_graph import analyze_contract_risk_async
 from app.services.lawyer_assignment import generate_initial_offer
 from app.services.metrics import track_event, timed_event # ✅ নতুন ইমপোর্ট
@@ -83,6 +83,7 @@ class ContractMemoResponse(BaseModel):
     lawyer_notes: Optional[str] = None
     lawyer_signature: Optional[str] = None
     completed_at: Optional[datetime] = None
+    pii_redactions_count: Optional[int] = 0
 
 
 class RequestVerificationResponse(BaseModel):
@@ -192,6 +193,11 @@ async def upload_and_audit(
     if not raw_text.strip():
         raise HTTPException(400, "The uploaded document contains no readable text.")
 
+    # ✅ Sovereign PII Sanitizer: scrub sensitive personal, financial & entity data before AI analysis
+    sanitized_text, pii_stats = sanitize_pii(raw_text)
+    if pii_stats.get("total", 0) > 0:
+        logger.info(f"[PII Redactor] Sanitized {pii_stats['total']} PII items from contract {file.filename}")
+
     playbook_rules = []
     if current_user.is_enterprise_user and current_user.enterprise_id:
         pb = await db.scalar(
@@ -209,11 +215,11 @@ async def upload_and_audit(
     async with timed_event(
         db, "audit_completed",
         user_id=current_user.id,
-        event_data={"file_ext": ext, "has_playbook": bool(playbook_rules), "audited_for": audited_for},
+        event_data={"file_ext": ext, "has_playbook": bool(playbook_rules), "audited_for": audited_for, "pii_redacted_count": pii_stats.get("total", 0)},
         commit=False
     ):
         agent_output = await analyze_contract_risk_async(
-            contract_text=raw_text,
+            contract_text=sanitized_text,
             playbook_rules=playbook_rules,
             audited_for=audited_for or "CLIENT"
         )
@@ -337,7 +343,8 @@ async def upload_and_audit(
         missing_provisions=missing_provisions,
         audited_for=audited_for or "CLIENT",
         stamp_duty_advisory=stamp_duty_advisory,
-        hitl_status=memo.hitl_status
+        hitl_status=memo.hitl_status,
+        pii_redactions_count=pii_stats.get("total", 0)
     )
 
 

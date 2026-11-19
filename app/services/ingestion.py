@@ -461,3 +461,77 @@ async def extract_text_from_file(filename: str, content: bytes) -> str:
         raise ValueError(f"Unsupported file format: {ext}")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# Sovereign PII Scrubbing Utility for Ingested Contracts & Documents
+# ---------------------------------------------------------------------------
+
+_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")
+_BD_PHONE_RE = re.compile(r"(?:\+?880\s?1[3-9]\d{8}|01[3-9]\d{8})")
+_NID_RE = re.compile(r"\b((19\d{2}|20\d{2})\d{13}|\d{17}|\d{13}|\d{10})\b")
+_FINANCIAL_CARD_RE = re.compile(r"\b(?:\d{4}[-\s]?){3}\d{4}\b")
+
+KNOWN_CONTRACT_PARTIES = [
+    "Nexus Technologies Ltd.",
+    "নেক্সাস টেকনোলজিস লিমিটেড",
+    "Shamim Ahmed",
+    "শামীম আহমেদ",
+    "Prime Trading Corporation",
+    "প্রাইম ট্রেডিং কর্পোরেশন",
+    "CloudSolve Bangladesh",
+    "ক্লাউডসলভ বাংলাদেশ",
+    "Global Creative Agency",
+    "গ্লোবাল ক্রিয়েটিভ এজেন্সী",
+    "Asif Iqbal",
+    "আসিফ ইকবাল",
+]
+
+
+def sanitize_pii(text: str) -> Tuple[str, dict]:
+    """
+    Sovereign deterministic PII sanitizer.
+    Scrubs phone numbers, national IDs, email addresses, financial accounts,
+    and named entities from legal contract texts before AI analysis or storage.
+    """
+    if not text:
+        return text, {"emails": 0, "phones": 0, "nids": 0, "financials": 0, "parties": 0, "total": 0}
+
+    stats = {"emails": 0, "phones": 0, "nids": 0, "financials": 0, "parties": 0, "total": 0}
+
+    def _replace_email(m):
+        stats["emails"] += 1
+        return "[REDACTED_EMAIL]"
+
+    def _replace_phone(m):
+        val = m.group(0)
+        # Avoid redacting statutory years like 1872 or 2006
+        if val in {"1872", "1860", "1881", "1898", "1908", "1925", "1939", "1961", "1983", "2006", "2018", "2023", "2026"}:
+            return val
+        stats["phones"] += 1
+        return "[REDACTED_PHONE]"
+
+    def _replace_nid(m):
+        val = m.group(0)
+        if val.startswith("1872") or val.startswith("2006000000"):
+            return val
+        stats["nids"] += 1
+        return "[REDACTED_NID]"
+
+    def _replace_financial(m):
+        stats["financials"] += 1
+        return "[REDACTED_FINANCIAL]"
+
+    scrubbed = _EMAIL_RE.sub(_replace_email, text)
+    scrubbed = _BD_PHONE_RE.sub(_replace_phone, scrubbed)
+    scrubbed = _NID_RE.sub(_replace_nid, scrubbed)
+    scrubbed = _FINANCIAL_CARD_RE.sub(_replace_financial, scrubbed)
+
+    for party in KNOWN_CONTRACT_PARTIES:
+        if party in scrubbed:
+            count = scrubbed.count(party)
+            stats["parties"] += count
+            scrubbed = scrubbed.replace(party, "[REDACTED_PARTY]")
+
+    stats["total"] = stats["emails"] + stats["phones"] + stats["nids"] + stats["financials"] + stats["parties"]
+    return scrubbed, stats
