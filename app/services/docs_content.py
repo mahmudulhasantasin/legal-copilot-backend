@@ -84,7 +84,7 @@ DEFAULT_PITCH_DECK: Dict[str, Any] = {
             "Contract Audit benchmark: 33/36 (91.7%) with 100% provision recall on the gold set.",
             "RAG benchmark: 46/55 effective (Router 100%, Act Hit@K 93.9%, MRR 0.864); Bengali accuracy +20pts after gold-set fixes.",
             "Hallucination benchmark: 88.9% (16/18) — out-of-scope and fabricated-section attacks deterministically blocked.",
-            "Full backend test suite: 73/73 passing, including security regression tests.",
+            "Full backend test suite: 98 unit and integration tests passing, including security regression tests.",
             "35,000+ Bangladesh statutes ingested; payments engine (SSLCommerz + ledger) fully built and deployed.",
         ],
     },
