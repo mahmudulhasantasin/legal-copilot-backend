@@ -120,7 +120,7 @@ async def get_pitch_deck():
         "tagline": "AI-powered Legal Intelligence for the Global South.",
         "problem": "80% of South Asians lack access to justice. A single contract review costs ৳50,000 ($450) and takes 7 days.",
         "solution": "AI-Native Legal Platform with Two Products: Copilot (Ask) and Audit (Verify).",
-        "value_proposition": "30-second contract audits for ৳28 ($0.25). Verified by real lawyers via our HITL marketplace.",
+        "value_proposition": "Contract audits for ৳28 ($0.25). Verified by real lawyers via our HITL marketplace.",
         "market_size": {
             "bangladesh_legal_services": "$1-2B annually",
             "bangladesh_diaspora": "4.5M+ needing legal help abroad",

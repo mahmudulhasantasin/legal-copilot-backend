@@ -25,7 +25,7 @@ DEFAULT_PITCH_DECK: Dict[str, Any] = {
     "company": "Advotech Copilot",
     "team_name": "Team Outliers",
     "tagline": "AI-powered Legal Intelligence for the Global South",
-    "one_liner": "30-second AI contract audits for ৳28 ($0.25) — verified by real lawyers. Legal help that 80% of South Asians can actually afford.",
+    "one_liner": "AI contract audits for ৳28 ($0.25) — verified by real lawyers. Legal help that 80% of South Asians can actually afford.",
     "problem": {
         "headline": "80% of South Asians lack access to justice",
         "points": [
