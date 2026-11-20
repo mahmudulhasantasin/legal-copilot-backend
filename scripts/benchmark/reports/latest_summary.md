@@ -35,14 +35,14 @@
 | Model Profile | Suite | Case ID | Status | Latency (ms) | Diagnostic Reason |
 |---|---|---|---|---:|---|
 | `default_production` | `rag` | `RAG-BN-005` | FAILED | 8424 | missed_kw=['১২০', '৩০'] |
-| `default_production` | `rag` | `RAG-BN-006` | ERROR | 220141 | ERROR: Error code: 429 - {'error': {'message': 'Rate limit reached for model `qwen/qwen3.8-27b` in organization `org_01m4mn0ytc |
+| `default_production` | `rag` | `RAG-BN-006` | ERROR | 220141 | ERROR: Rate limit reached for model `qwen/qwen3.8-27b` on tokens per minute (OTPM). |
 | `default_production` | `rag` | `RAG-BN-009` | FAILED | 19540 | missed_acts=['যৌতুক নিরোধ আইন, ২০১৮']; missed_kw=['৫', 'জরিমানা'] |
 | `default_production` | `rag` | `RAG-BN-010` | FAILED | 44516 | missed_kw=['৩০', 'মহাপরিচালক'] |
-| `default_production` | `rag` | `RAG-BN-016` | ERROR | 50395 | ERROR: Error code: 429 - {'error': {'message': 'Rate limit reached for model `qwen/qwen3.8-27b` in organization `org_01m4mn0ytc |
+| `default_production` | `rag` | `RAG-BN-016` | ERROR | 50395 | ERROR: Rate limit reached for model `qwen/qwen3.8-27b` on tokens per minute (OTPM). |
 | `default_production` | `rag` | `RAG-BN-022` | FAILED | 17174 | missed_kw=['৩ বছর'] |
 | `default_production` | `rag` | `RAG-EN-004` | FAILED | 8360 | missed_kw=['author', 'written'] |
 | `default_production` | `rag` | `RAG-EN-011` | FAILED | 10090 | missed_kw=['unauthorized', 'data'] |
-| `default_production` | `rag` | `RAG-EN-014` | ERROR | 79719 | ERROR: Error code: 429 - {'error': {'message': 'Rate limit reached for model `qwen/qwen3.8-27b` in organization `org_01m4mn0ytc |
+| `default_production` | `rag` | `RAG-EN-014` | ERROR | 79719 | ERROR: Rate limit reached for model `qwen/qwen3.8-27b` on tokens per minute (OTPM). |
 | `default_production` | `rag` | `RAG-EN-016` | FAILED | 6992 | missed_kw=['two years', 'fine'] |
 | `default_production` | `rag` | `RAG-BGL-005` | FAILED | 57698 | missed_acts=['সাইবার নিরাপত্তা আইন, ২০২৩']; missed_kw=['পরিচয়'] |
 | `default_production` | `rag` | `RAG-BGL-007` | FAILED | 14561 | missed_acts=['The Dissolution of Muslim Marriages Act, 1939', 'The Muslim Family Laws Ordinance, 1961']; missed_kw=['খুলা'] |

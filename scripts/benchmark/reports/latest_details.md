@@ -40,7 +40,7 @@
 - **Answer Preview:** একটি প্রাইভেট কোম্পানিতে ৩ বছর স্থায়ী কর্মী হিসেবে কাজ করার পর আপনাকে হঠাৎ নোটিশ বা নোটিশ পে ছাড়া চাকরিচ্যুত করা হলে, বাংলাদেশ শ্রম আইন, ২০০৬-এর বিধান অনুযায়ী আপনি আপনার বিভিন্ন আইনানুগ পাওনা ও ক্ষতিপূরণ দাবি করতে পারবেন।   যদি আপনার চাকরিচ্যুতি অসদাচরণ বা ফৌজদারি অপরাধে দণ্ডপ্রাপ্ত হওয়া ছাড়া অন্য কোনো সাধারণ কারণে বা ছাঁটাই প্রক্রিয়ায় হয়ে থাকে, তবে **বাংলাদেশ শ্রম আইন, ২০০৬-এর ধারা ২৩** এবং অন্যান্য সংশ্লিষ্ট ধারা অনুযায়ী আপনার পাওনা হিসাব করা হবে। সাধারণত এই পরিস্থিতিতে আপনি যেসব পাওনা দাবি ক
 
 #### `RAG-BN-006` — **ERROR** (220141 ms)
-- **Error:** `Error code: 429 - {'error': {'message': 'Rate limit reached for model `qwen/qwen3.8-27b` in organization `org_01m4mn0ytcex6semr05qaq5b1j` service tier `on_demand` on output tokens per minute (OTPM): Limit 1000, Used 993, Requested 950. Please try again in 56.58s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}`
+- **Error:** `Rate limit reached for model qwen/qwen3.8-27b on output tokens per minute (OTPM). HTTP 429 rate limit exceeded.`
 
 #### `RAG-BN-007` — **PASSED** (6644 ms)
 - **Query (bn):** আগাম জামিন (Anticipatory Bail) ফৌজদারি কার্যবিধির কোন ধারায় এবং কোন আদালতে আবেদন করতে হয়?
@@ -102,7 +102,7 @@
 - **Answer Preview:** ৫ লক্ষ টাকার চেক ডিজঅনারের ঘটনায় **The Negotiable Instruments Act, 1881-এর ধারা ১৩৮** অনুযায়ী ব্যাংক থেকে রিটার্নের তথ্য পাওয়ার **৩০ দিনের মধ্যে** প্রেরক বা হোল্ডার ইন ডিউ কোর্সের পক্ষ থেকে লিখিত আইনি নোটিশ প্রেরণ বাধ্যতামূলক। নিচে একটি ফরমাল লিগ্যাল নোটিশের ড্রাফট প্রদান করা হলো:  **আইনি নোটিশ ড্রাফট (Legal Notice)**  বরাবর, [প্রাপক/চেক প্রদানকারীর নাম ও ঠিকানা]  **বিষয়: The Negotiable Instruments Act, 1881-এর ধারা ১৩৮-এর অধীনে ৫,০০,০০০ (পাঁচ লক্ষ) টাকার চেক ডিজঅনার সংক্রান্ত লিগ্যাল নোটিশ।**  
 
 #### `RAG-BN-016` — **ERROR** (50395 ms)
-- **Error:** `Error code: 429 - {'error': {'message': 'Rate limit reached for model `qwen/qwen3.8-27b` in organization `org_01m4mn0ytcex6semr05qaq5b1j` service tier `on_demand` on output tokens per minute (OTPM): Limit 1000, Used 294, Requested 950. Please try again in 14.64s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}`
+- **Error:** `Rate limit reached for model qwen/qwen3.8-27b on output tokens per minute (OTPM). HTTP 429 rate limit exceeded.`
 
 #### `RAG-BN-017` — **PASSED** (10877 ms)
 - **Query (bn):** যৌতুকের দাবিতে শ্বশুরবাড়ির লোকজন আমাকে মারধর করে বাড়ি থেকে বের করে দিয়েছে এবং ভরণপোষণ দিচ্ছে না। আমি কি ফৌজদারি মামলা এবং ভরণপোষণের মামলা একসাথে করতে পারব?
@@ -228,7 +228,7 @@
 - **Answer Preview:** Seeking specific performance under **The Specific Relief Act, 1877** and claiming damages under **The Contract Act, 1872-এর ধারা ৭৩** offer distinct remedial avenues upon a contractual breach. Under **The Specific Relief Act, 1877-এর ধারা ১৯**, a plaintiff suing for specific performance may alternatively or additionally pray for compensation. If the Court declines specific performance due to equitable bars or impossibility (as preserved in the Explanation), it retains jurisdiction to award damag
 
 #### `RAG-EN-014` — **ERROR** (79719 ms)
-- **Error:** `Error code: 429 - {'error': {'message': 'Rate limit reached for model `qwen/qwen3.8-27b` in organization `org_01m4mn0ytcex6semr05qaq5b1j` service tier `on_demand` on output tokens per minute (OTPM): Limit 1000, Used 974, Requested 950. Please try again in 55.44s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}`
+- **Error:** `Rate limit reached for model qwen/qwen3.8-27b on output tokens per minute (OTPM). HTTP 429 rate limit exceeded.`
 
 #### `RAG-EN-015` — **PASSED** (77426 ms)
 - **Query (en):** Under Section 5 of the Limitation Act, 1908, can delay be condoned for filing an original civil suit, or does Section 5 apply only to appeals and specified applications?
