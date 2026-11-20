@@ -224,7 +224,8 @@ DEFAULT_ROADMAP: Dict[str, Any] = {
         "Docs page admin panel refinements (drag/drop section ordering)",
     ],
     "mid_term": [
-        "Corporate playbook self-service for enterprises",
+        "Visual drag-and-drop compliance playbook designer & CI/CD legal linting",
+        "Enterprise ERP/HRIS (SAP, Oracle, Workday) automated billing & SSO integration",
         "MCP server public licensing program",
         "Dispute-preparation assistant (notice drafting, timeline building)",
     ],
