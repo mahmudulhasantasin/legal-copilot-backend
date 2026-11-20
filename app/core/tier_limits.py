@@ -55,7 +55,7 @@ LAWYER_MONTHLY_FREE_CHAT_CREDITS = 50
 # ──────────────────────────────────────────────────────────
 
 def get_tier_key(user: "User") -> str:
-    from app.models.user import UserRole # <-- লোকাল ইমপোর্ট
+    from app.models.user import UserRole  # Deferred import to prevent circular dependency
 
     # SEC-AUTH-04: hardcoded demo-email backdoor removed — tier strictly follows role.
 

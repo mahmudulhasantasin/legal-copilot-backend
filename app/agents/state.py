@@ -18,11 +18,11 @@ class QAState(TypedDict):
     contract_context: Optional[str]
     language: Optional[str]
     
-    # ✅ নতুন ফিল্ডসমূহ (Smart Router এবং MCP Case Law-এর জন্য)
-    query_type: Optional[str]            # "ANSWERABLE", "NEEDS_CLARIFICATION", "OUT_OF_SCOPE"
-    needs_case_law: Optional[bool]       # মামলার রায় খোঁজার প্রয়োজন আছে কি না
-    cited_cases: Optional[List[Dict[str, Any]]] # LLM যে মামলার রায় উল্লেখ করেছে
-    structured_response: Optional[Dict[str, Any]] # LLM-এর JSON আউটপুট (Parse করার পর)
+    # Query classification and live case law tracking
+    query_type: Optional[str]                     # "ANSWERABLE", "NEEDS_CLARIFICATION", "OUT_OF_SCOPE"
+    needs_case_law: Optional[bool]                # Flag indicating whether precedent search is required
+    cited_cases: Optional[List[Dict[str, Any]]]   # Case law precedents cited by the model
+    structured_response: Optional[Dict[str, Any]] # Parsed JSON response payload from the LLM
 
 
 class ClauseRisk(TypedDict):

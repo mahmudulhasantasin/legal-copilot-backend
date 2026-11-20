@@ -28,7 +28,7 @@ from app.services.email_service import (
     send_client_lawyer_assigned_email,
     send_client_verification_complete_email,
 )
-from app.services.metrics import track_event # ✅ নতুন ইমপোর্ট
+from app.services.metrics import track_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/lawyer", tags=["Lawyer HITL"])
@@ -355,7 +355,7 @@ async def submit_review(
 
     memo.hitl_status = HITLStatus.COMPLETED
     memo.completed_at = now
-    memo.clauses_analysis = payload.updated_clauses  # ✅ এডিট করা ক্লজগুলো ডাটাবেসে সেভ হচ্ছে
+    memo.clauses_analysis = payload.updated_clauses  # Persist revised clauses to database
     memo.lawyer_notes = payload.lawyer_notes
     memo.lawyer_signature = payload.signature_url or f"digital_seal_{lawyer.id}_{now.strftime('%Y%m%d%H%M%S')}"
     memo.signed_contract_path = payload.signed_pdf_url or (memo.contract.file_path if memo.contract else None)
@@ -476,7 +476,7 @@ async def list_my_withdrawals(lawyer: LawyerProfile = Depends(get_current_lawyer
     stmt = select(WithdrawalRequest).where(WithdrawalRequest.lawyer_id == lawyer.id).order_by(desc(WithdrawalRequest.requested_at)).limit(20)
     rows = (await db.execute(stmt)).scalars().all()
     
-    #  FIX: লিস্ট কম্প্রিহেনশনের বদলে লুপ ব্যবহার করা হলো যাতে কোনো সিনট্যাক্স এরর না আসে
+    # Serialize withdrawal history records
     result = []
     for w in rows:
         result.append({

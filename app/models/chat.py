@@ -147,7 +147,7 @@ class ChatMessage(Base):
     # ── Citations & Sources ──
     citations: Mapped[Optional[list[dict]]] = mapped_column(JSON, nullable=True)
     
-    # ✅ নতুন যোগ করা ৩টি কলাম
+    # Extended case law and guidance fields
     cited_cases: Mapped[Optional[list[dict]]] = mapped_column(JSON, nullable=True)
     suggested_next_steps: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
     suggested_follow_ups: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)

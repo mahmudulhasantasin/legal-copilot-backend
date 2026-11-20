@@ -16,7 +16,7 @@ except FileNotFoundError:
 
 BN_TO_EN = str.maketrans("০১২৩৪৫৬৭৮৯", "0123456789")
 
-# বাংলা সাব-সেকশন লেটার থেকে ইংরেজি Uppercase লেটারে ম্যাপিং (যেমন: ২৬ক -> 26A)
+# Map Bengali sub-section letters to uppercase Latin letters (e.g., 26ক -> 26A)
 BN_TO_EN_SUB = {
     "ক": "A", "খ": "B", "গ": "C", "ঘ": "D", "ঙ": "E",
     "চ": "F", "ছ": "G", "জ": "H", "ঝ": "I", "ঞ": "J",
@@ -129,25 +129,25 @@ def normalize_section(section_text: str) -> str:
     
     text = str(section_text).translate(BN_TO_EN)          # Bengali digit → English
     
-    # Bengali words explicit remove
+    # Strip explicit statutory label words
     text = text.replace("ধারা", " ").replace("আইন", " ").replace("নং", " ")
     
-    # Year বাদ
+    # Strip standalone 4-digit enactment years
     text = re.sub(r'\b(18|19|20)\d{2}\b', '', text)
     
-    # English keywords বাদ
+    # Strip statutory English keywords
     text = re.sub(r'(?i)\b(section|of|act|the|sec|number|no)\b', '', text)
     
-    # Keep only digit, letter, bracket
+    # Keep only alphanumeric tokens and parentheses
     matches = re.findall(r'[\da-zA-Z\u0980-\u09FF\(\)]+', text)
     
-    # "Section 2 and 3" হলে "2-3" হবে
+    # Join composite sections (e.g. "Section 2 and 3" -> "2-3")
     return "-".join(matches) 
 
 
 def get_section_variants(section_text: str) -> List[str]:
     """
-    Qdrant MatchAny ফিল্টারের জন্য সেকশন নম্বরের সম্ভাব্য সব ভ্যারিয়েন্ট তৈরি করে।
+    Generates all plausible statutory section variants for Qdrant MatchAny filters.
     Example: 'ধারা ২৬ক' -> ['26A', '26a', '26ক']
     Example: 'Section 5A' -> ['5A', '5a']
     """
@@ -155,13 +155,13 @@ def get_section_variants(section_text: str) -> List[str]:
     if not base:
         return []
     
-    # ১. বাংলা লেটার থাকলে ইংরেজি Uppercase-এ কনভার্ট করা
+    # 1. Map Bengali sub-section letters to Latin equivalents
     en_base = "".join(BN_TO_EN_SUB.get(ch, ch) for ch in base)
     
-    # ২. যেহেতু ডেটাবেসে সাধারণত Uppercase থাকে, তাই Upper ও Lower দুটোই পাঠানো হচ্ছে
+    # 2. Database records may contain uppercase or lowercase suffixes
     variants = {en_base.upper(), en_base.lower()}
     
-    # ৩. যদি ইনপুটে বাংলা লেটার থাকে, তবে সেটাও ভ্যারিয়েন্ট হিসেবে রাখা (Backward compatibility)
+    # 3. Retain original Bengali form for backward compatibility
     if any(ch in BN_TO_EN_SUB for ch in base):
         variants.add(base)
         

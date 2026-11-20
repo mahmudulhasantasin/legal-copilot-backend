@@ -24,7 +24,7 @@ TextEmbedding.add_custom_model(
 )
 
 # ──────────────────────────────────────────────────────────
-# কনফিগারেশন
+# CONFIGURATION
 # ──────────────────────────────────────────────────────────
 COLLECTION_NAME = "bd_laws_e5_small"
 MODEL_NAME = "intfloat/multilingual-e5-small" 
@@ -83,7 +83,7 @@ def main():
         for item in batch:
             text_content = item.get("text", "")
             
-            # ✅ FIX 1: E5 মডেলের জন্য 'passage: ' প্রিফিক্স যুক্ত করা হলো
+            # Prepend 'passage: ' prefix required by multilingual-e5 models
             texts.append(f"passage: {text_content}")
             
             raw_act = item.get("act", "")
@@ -104,7 +104,7 @@ def main():
             }
             
             payloads.append({
-                "text": text_content, # পেলোডে অরিজিনাল টেক্সট রাখা হলো
+                "text": text_content,  # Retain original text in payload
                 "content": text_content,
                 "metadata": meta_data,
                 "act": raw_act,

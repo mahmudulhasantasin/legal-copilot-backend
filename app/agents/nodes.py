@@ -33,7 +33,7 @@ def _audit_leak_detected(obj: Any) -> bool:
     low = blob.lower()
     return any(m.lower() in low for m in _AUDIT_LEAK_MARKERS)
 
-# ── সীমা (Single Source of Truth) ──────────────────────────
+# ── Limits & Thresholds (Single Source of Truth) ──────────────
 MAX_CONTRACT_CHARS = 35000   # Supports ~15 pages
 CHUNK_SIZE         = 12000   # High-context window per LLM call
 CHUNK_OVERLAP      = 800

@@ -59,7 +59,7 @@ def _parse_json_object(text: str) -> dict:
     return json.loads(text[start:end + 1])
 
 
-# ✅ নতুন ডাইনামিক প্রম্পট: কোনো কী-ওয়ার্ড হার্ডকোড করা নেই, শুধু লজিক দেওয়া আছে
+# Dynamic statutory reformulation prompt with multi-act extraction logic
 ROUTER_PROMPT = """You are an expert Legal Query Reformulator for Bangladesh Law.
 Your core task is to analyze the user's query and extract the Act names and Section numbers.
 

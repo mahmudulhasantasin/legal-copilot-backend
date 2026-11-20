@@ -46,7 +46,7 @@ TIER2_DOMAINS = [
 
 ALLOWED_DOMAINS = set(TIER1_DOMAINS + TIER2_DOMAINS)
 
-# Relevance Check (যাতে খেলাধুলা বা রাজনীতির নিউজ ফিল্টার হয়ে যায়)
+# Legal relevance signals to filter out non-legal news (sports, politics, entertainment)
 LEGAL_SIGNALS = (
     "court", "verdict", "judgment", "judgement", "ruling", "appeal",
     "petition", "writ", "high court", "supreme court", "appellate",
@@ -177,10 +177,10 @@ def get_statute_by_section(act_name: str, section_number: str) -> Dict[str, Any]
     Directly retrieves the verbatim text of an exact statutory section from Qdrant Cloud.
     Uses robust act resolution and section variants to prevent cross-act collisions.
     """
-    # ১. Act Name Resolution (Bengali বা English, যেকোনো ফরম্যাটে)
+    # 1. Resolve canonical enactment title across aliases (Bengali or English)
     act_stored = resolve_act_robust(act_name) 
     
-    # ২. Section Variants বের করা (e.g., "ধারা ২৬ক" -> ["26A", "26a"])
+    # 2. Compute statutory section variants (e.g., "ধারা ২৬ক" -> ["26A", "26a"])
     sec_variants = get_section_variants(section_number)
     if not sec_variants:
         sec_variants = [section_number.strip()]
@@ -216,7 +216,7 @@ def get_statute_by_section(act_name: str, section_number: str) -> Dict[str, Any]
             
             point_act = metadata.get("act", "")
             
-            # Safety Check: যদি alias ফাইলে অ্যাক্ট রিজলভ না হয়, তবে সাবস্ট্রিং ম্যাচ করে দেখো
+            # Fallback guard: match substring if alias resolution returns empty
             if not act_stored and act_name:
                 if act_name.lower() not in point_act.lower():
                     continue

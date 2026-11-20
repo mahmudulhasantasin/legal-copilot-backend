@@ -26,7 +26,7 @@ from app.models.user import UserRole
 # ──────────────────────────────────────────────────────────
 
 ALLOW_CUSTOM_TOPUP: bool = False
-# Set to True later to enable "buy N credits for ৳X" flow.
+# Set to True later to enable "buy N credits for BDT X" flow.
 # When True, custom rate MUST be WORSE than the Standard package
 # to prevent users from discovering a fixed rate.
 

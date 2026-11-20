@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, List
 
-# ✅ FIX: BackgroundTasks ইমপোর্ট করা হলো
 from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, desc, and_
@@ -37,7 +36,6 @@ from app.services.payment_fulfillment import (
 )
 from app.services.sslcommerz import SSLCommerzGatewayError, sslcommerz_service
 
-# ✅ FIX: ইমেইল সার্ভিস ইমপোর্ট করা হলো
 from app.services.email_service import (
     send_lawyer_approved_email,
     send_lawyer_rejected_email,
@@ -197,7 +195,7 @@ async def list_pending_lawyers(
 @router.post("/lawyers/{lawyer_id}/approve")
 async def approve_lawyer(
     lawyer_id: int,
-    background_tasks: BackgroundTasks,  # ✅ FIX: BackgroundTasks যোগ করা হলো
+    background_tasks: BackgroundTasks,
     admin: User = Depends(check_is_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -225,7 +223,7 @@ async def approve_lawyer(
     user.role = UserRole.LAWYER
     user.is_verified = True
 
-    # ✅ FIX: ইমেইল পাঠানোর জন্য ব্যাকগ্রাউন্ড টাস্কে যোগ করা হলো
+    # Dispatch approval notification email via background task
     background_tasks.add_task(
         send_lawyer_approved_email,
         user.email,
@@ -892,7 +890,7 @@ async def list_users(
     stmt = stmt.order_by(desc(User.created_at)).limit(limit).offset(offset)
     users = (await db.execute(stmt)).scalars().all()
     
-    # ✅ FIX: profile_photo_url এবং phone যোগ করা হলো
+    # Include profile_photo_url and phone number in user list serialization
     return [
         {
             "id": u.id, 

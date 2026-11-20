@@ -18,7 +18,7 @@ from app.core.tier_limits import (
     LAWYER_MONTHLY_FREE_CHAT_CREDITS,
 )
 
-# ⚠️ সার্কুলার ইমপোর্ট এড়াতে TYPE_CHECKING ব্যবহার করা হলো
+# Deferred type annotations to prevent circular imports
 if TYPE_CHECKING:
     from app.models.user import User, Enterprise, UserRole, SubscriptionTier, CreditTransaction, CreditTxType, MemberApprovalStatus
     from app.models.playbook import Enterprise
@@ -86,7 +86,7 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> "User":
-    from app.models.user import User  # <-- লোকাল ইমপোর্ট
+    from app.models.user import User  # Deferred import to prevent circular dependency
 
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -174,7 +174,7 @@ def require_roles(allowed_roles: list):
 def require_verified_enterprise_member():
     """Ensures the enterprise member is APPROVED by their company admin."""
     async def checker(current_user: "User" = Depends(get_current_user)) -> "User":
-        from app.models.user import UserRole, MemberApprovalStatus # <-- লোকাল ইমপোর্ট
+        from app.models.user import UserRole, MemberApprovalStatus  # Deferred import
         
         if current_user.role == UserRole.ENTERPRISE_MEMBER:
             if current_user.member_approval_status != MemberApprovalStatus.APPROVED:
@@ -409,7 +409,7 @@ async def check_and_deduct_credits(
     if commit:
         await db.commit()
 
-    # ✅ FIX: await db.refresh(user) লাইনটি মুছে ফেলা হয়েছে যাতে মেমোরির ডাটা ডাটাবেসের পুরনো ডাটা দ্বারা ওভাররাইট না হয়।
+    # Retain modified user balance in memory without re-fetching stale snapshot
     return {"source": "wallet", "deducted": cost, "remaining": locked_user.credit_balance}
 
 

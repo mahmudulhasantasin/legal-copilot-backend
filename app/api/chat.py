@@ -28,7 +28,7 @@ from app.models.memo import ContractMemo, Contract, HITLStatus
 from app.agents.qa_graph import qa_graph
 from app.services.llm_provider import get_llm
 from app.services.verifier import verifier 
-from app.services.metrics import track_event, timed_event # ✅ নতুন ইমপোর্ট
+from app.services.metrics import track_event, timed_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["Legal Chat"])
@@ -646,7 +646,7 @@ DETAILED CLAUSES ANALYSIS:
             formatted_chat_history.append(HumanMessage(content=msg.content))
         elif msg.role == "assistant":
             formatted_chat_history.append(AIMessage(content=msg.content))
-            # ✅ FIX: যদি শেষ মেসেজটি ক্লারিফিকেশন চাওয়া হয়, তবে ফ্ল্যাগ True করবো
+            # Flag whether the preceding turn requested clarification
             is_follow_up_to_clarification = getattr(msg, "needs_clarification", False)
 
     # 6. Invoke LangGraph
@@ -664,7 +664,7 @@ DETAILED CLAUSES ANALYSIS:
         "query_type": None,
         "needs_case_law": False,
         "structured_response": None,
-        # ✅ FIX: নতুন ফ্ল্যাগ পাস করা হলো
+        # Force answerable mode if user is answering a previous clarification
         "force_answerable": is_follow_up_to_clarification 
     }
 

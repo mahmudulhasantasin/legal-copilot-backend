@@ -6,7 +6,6 @@ from qdrant_client import models
 from app.config import settings
 from app.services.vector_store import vector_manager
 from app.services.query_analyzer import analyze_query_dynamically
-# ✅ resolve_act_robust এবং get_section_variants ইমপোর্ট করা হলো
 from app.services.legal_normalizer import (
     normalize_section, 
     normalize_act, 
@@ -57,12 +56,12 @@ class ProductionHybridRetriever:
     # ---------------- Path A: Exact Section Lookup ----------------
     def _targeted_lookup(self, act: Optional[str], sections: List[str], limit: int = 12,
                          score: float = PATH_A_SCORE) -> List[tuple]:
-        # ✅ resolve_act_robust ব্যবহার করা হলো যাতে ৩৫২৫টি অ্যালিয়াস কাজে লাগে
+        # Resolve canonical enactment name against full statutory alias catalog
         act_norm = resolve_act_robust(act)
         
         secs = []
         for s in sections[:6]:
-            # ✅ get_section_variants ব্যবহার করে বাংলা ও ইংরেজি ভ্যারিয়েন্ট বের করা হলো (যেমন: ২৬ক -> 26A)
+            # Generate alphanumeric variants for both Bengali and English digits/subsections
             variants = get_section_variants(s)
             if variants:
                 for v in variants:
@@ -137,7 +136,7 @@ class ProductionHybridRetriever:
         return hits
 
     def _dense_semantic_search(self, search_text: str, act: Optional[str], limit: int = 8) -> List[tuple]:
-        # ✅ resolve_act_robust ব্যবহার করা হলো
+        # Resolve canonical act identifier for metadata filtering
         act_norm = resolve_act_robust(act)
         q_filter = None
         if act_norm:
@@ -175,7 +174,7 @@ class ProductionHybridRetriever:
 
     # ---------------- Merge & Rank ----------------
     def retrieve(self, query: str, history: list = None, llm_instance=None, top_k: int = 8) -> List[Dict[str, Any]]:
-        # ✅ এখানে query_analyzer এখন ডাইনামিক এবং একাধিক আইন ডিটেক্ট করতে পারে
+        # Dynamic query analysis capable of multi-act and composite statutory extraction
         analysis = analyze_query_dynamically(query, history=history, llm_instance=llm_instance)
         explicit = analysis.explicit_sections or []
         explicit_norm = {normalize_section(s) for s in explicit}

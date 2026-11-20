@@ -1,10 +1,10 @@
 import os
-from typing import Optional  # ✅ Optional ইমপোর্ট করা হলো
+from typing import Optional
 from dotenv import load_dotenv
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# ✅ override=True যোগ করা হলো যাতে .env ফাইলের নতুন ভ্যালু আগেরগুলোকে ওভাররাইড করতে পারে
+# Override existing environment variables with .env file values
 load_dotenv(override=True)
 
 
@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # ✅ Hugging Face API Key
     HF_TOKEN: str = os.getenv("HF_TOKEN", "")
 
-    # ✅ নতুন ছোট মডেল এবং কালেকশনের নাম
+    # Vector Store & Embedding Model
     QDRANT_COLLECTION_NAME: str = os.getenv("QDRANT_COLLECTION_NAME", "bd_laws_e5_small")
     EMBED_MODEL: str = os.getenv("EMBED_MODEL", "intfloat/multilingual-e5-small")
 
@@ -60,17 +60,17 @@ class Settings(BaseSettings):
     GOOGLE_APPLICATION_CREDENTIALS: str = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
 
-    # ✅ Tavily API Key (নতুন যুক্ত করা হলো)
+    # Live Search Provider (Tavily)
     TAVILY_API_KEY: Optional[str] = os.getenv("TAVILY_API_KEY", None)
 
-    # ✅ Supabase Storage Configuration (অডিটে পাওয়া ৫০০ এরর ফিক্স করার জন্য)
+    # Supabase Storage Configuration (Contract & Document Blobs)
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
     SUPABASE_SERVICE_KEY: str = os.getenv("SUPABASE_SERVICE_KEY", "")
 
-    # ✅ Legacy bKash reference config (retained for backward compatibility)
+    # Legacy bKash reference config (retained for backward compatibility)
     BKASH_MERCHANT_NUMBER: str = os.getenv("BKASH_MERCHANT_NUMBER", "01700000000")
 
-    # ✅ SSLCommerz Payment Gateway Config (Sandbox / Live)
+    # SSLCommerz Payment Gateway Config (Sandbox / Live)
     SSLCOMMERZ_STORE_ID: str = os.getenv("SSLCOMMERZ_STORE_ID", "")
     SSLCOMMERZ_STORE_PASSWD: str = os.getenv("SSLCOMMERZ_STORE_PASSWD", "")
     SSLCOMMERZ_IS_SANDBOX: bool = os.getenv("SSLCOMMERZ_IS_SANDBOX", "true").strip().lower() in (
@@ -80,10 +80,10 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
     MCP_SERVER_URL: str = os.getenv("MCP_SERVER_URL", "https://bd-legal-mcp-server-z1ea.onrender.com/mcp")
-    # ✅ Per-call timeout (s) for MCP tool calls — whole retry ladder capped by this
+    # Per-call timeout (s) for MCP tool calls — whole retry ladder capped by this
     MCP_TOOL_TIMEOUT_S: int = int(os.getenv("MCP_TOOL_TIMEOUT_S", "40"))
 
-    # ✅ Pydantic V2 এর নতুন কনফিগারেশন
+    # Pydantic Settings Configuration
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @model_validator(mode="after")
@@ -134,6 +134,6 @@ SSLCOMMERZ_IS_SANDBOX = settings.SSLCOMMERZ_IS_SANDBOX
 BACKEND_PUBLIC_URL = settings.BACKEND_PUBLIC_URL
 FRONTEND_URL = settings.FRONTEND_URL
 
-# ✅ Tavily Direct Export (প্রয়োজন হলে)
+# Direct exports for external utility modules
 TAVILY_API_KEY = settings.TAVILY_API_KEY
 MCP_SERVER_URL = settings.MCP_SERVER_URL

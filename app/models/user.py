@@ -101,7 +101,7 @@ class User(Base):
     # ── Personal Info ──
     date_of_birth: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     gender: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    profile_photo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True) # ✅ নতুন যুক্ত হলো
+    profile_photo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # ── OTP / Email Verification ──
     otp_code: Mapped[Optional[str]] = mapped_column(String(6), nullable=True)
@@ -181,7 +181,7 @@ class User(Base):
         back_populates="user", foreign_keys="Contract.user_id"
     )
 
-    # ✅ ইনডেন্টেশন ঠিক করা হয়েছে এবং টাইপ হিন্ট স্ট্যান্ডার্ড করা হয়েছে
+    # Enterprise organization relationship
     enterprise: Mapped[Optional["Enterprise"]] = relationship(  # type: ignore
         back_populates="members", foreign_keys=[enterprise_id]
     )

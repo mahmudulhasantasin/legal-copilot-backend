@@ -12,7 +12,7 @@ import logging
 import re
 import smtplib
 import threading
-import json  # ✅ নতুন যুক্ত করা হয়েছে
+import json
 from email.message import EmailMessage
 
 from dotenv import load_dotenv
@@ -65,7 +65,7 @@ def _load_gmail_service():
 
         creds = None
         
-        # ✅ FIX: চেক করা হচ্ছে টোকেনটি ফাইল নাকি সরাসরি JSON স্ট্রিং (Render-এর জন্য)
+        # Check whether token is an inline JSON string or a file path (for Render/cloud deployments)
         if GMAIL_TOKEN_FILE.strip().startswith("{"):
             try:
                 info = json.loads(GMAIL_TOKEN_FILE)
@@ -94,7 +94,7 @@ def _load_gmail_service():
                         "Generate token.json locally and paste its content into GMAIL_TOKEN_FILE."
                     )
                 
-                # লোকাল সেটআপের জন্য (যদি ব্রাউজার ওপেন করার দরকার হয়)
+                # Interactive flow for local setup when browser authentication is available
                 if GMAIL_CREDENTIALS_FILE.strip().startswith("{"):
                     info = json.loads(GMAIL_CREDENTIALS_FILE)
                     flow = InstalledAppFlow.from_client_config(info, GMAIL_SCOPES)
@@ -105,7 +105,7 @@ def _load_gmail_service():
                 else:
                     raise FileNotFoundError("Missing credentials.json or env JSON.")
 
-            # লোকাল পিসিতে নতুন টোকেন সেভ করা (Render-এ ফাইল রাইট করা যাবে না, তাই চেক করা হচ্ছে)
+            # Persist token locally when running outside containerized deployment (e.g. Render)
             if not os.getenv("RENDER") and not os.getenv("RENDER_EXTERNAL_URL"):
                 with open("token.json", "w") as f:
                     f.write(creds.to_json())
@@ -245,7 +245,7 @@ async def send_otp_email(recipient_email: str, otp_code: str) -> bool:
     )
     return await _send_email(recipient_email, subject, body)
 
-# ✅ নতুন: পাসওয়ার্ড রিসেট ইমেইল
+# Password reset email dispatch
 async def send_password_reset_email(recipient_email: str, otp_code: str) -> bool:
     subject = "Reset Your ContractMind Password"
     body = (

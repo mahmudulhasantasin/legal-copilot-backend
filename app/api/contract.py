@@ -25,7 +25,7 @@ from app.models.playbook import CompanyPlaybook
 from app.services.ingestion import extract_text_from_file, sanitize_pii
 from app.agents.contract_graph import analyze_contract_risk_async
 from app.services.lawyer_assignment import generate_initial_offer
-from app.services.metrics import track_event, timed_event # ✅ নতুন ইমপোর্ট
+from app.services.metrics import track_event, timed_event
 from app.services.redline_generator import build_redlined_docx
 
 logger = logging.getLogger(__name__)
@@ -162,7 +162,7 @@ async def upload_and_audit(
     if ext not in allowed_types:
         raise HTTPException(400, f"Unsupported file format. Allowed: {', '.join(allowed_types)}")
 
-    # ফাইল সাইস চেক — credit deduct হওয়ার আগে। Chunked read with hard cap (SEC-DOS-01)
+    # File size validation before credit deduction. Chunked read with hard cap (SEC-DOS-01)
     MAX_FILE_SIZE_BYTES = settings.MAX_CONTRACT_UPLOAD_MB * 1024 * 1024  # 20 MB default
     file_bytes = await read_upload_limited(file, MAX_FILE_SIZE_BYTES)
     if len(file_bytes) == 0:

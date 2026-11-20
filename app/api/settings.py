@@ -26,7 +26,7 @@ router = APIRouter(prefix="/api/settings", tags=["Settings & Profile"])
 # ──────────────────────────────────────────────────────────
 SUPABASE_URL = getattr(settings, "SUPABASE_URL", "")
 SUPABASE_KEY = getattr(settings, "SUPABASE_SERVICE_KEY", "")
-BUCKET_NAME = "contracts"  # আমরা একই বাকেটে avatars/ ফোল্ডার বানাবো
+BUCKET_NAME = "contracts"  # Store avatars under the avatars/ prefix within the contracts bucket
 
 
 # ──────────────────────────────────────────────────────────
@@ -206,16 +206,16 @@ async def upload_profile_photo(
             file_options={"content-type": file.content_type}
         )
         
-        # ✅ FIX: Supabase থেকে সরাসরি সম্পূর্ণ Public URL বের করা হচ্ছে
+        # Retrieve public URL from Supabase storage
         public_url_res = supabase.storage.from_(BUCKET_NAME).get_public_url(safe_name)
         
-        # লাইব্রেরি ভার্সন অনুযায়ী রেসপন্স ডিকশনারি বা স্ট্রিং হতে পারে
+        # Accommodate library version variations (dict vs string return type)
         if isinstance(public_url_res, dict):
             public_url = public_url_res.get("publicURL") or public_url_res.get("publicUrl")
         else:
             public_url = str(public_url_res)
 
-        # ✅ ডাটাবেসে ফুল URL সেভ করা হচ্ছে
+        # Persist public URL in user profile
         current_user.profile_photo_url = public_url
         await db.commit()
         
