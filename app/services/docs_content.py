@@ -92,7 +92,7 @@ DEFAULT_PITCH_DECK: Dict[str, Any] = {
         "headline": "Global tools don't read Bengali; local lawyers don't scale",
         "points": [
             " Harvey / general LLMs: strong English, weak Bengali grounding, hallucinate statutes — we retrieve then generate, with deterministic guards.",
-            "Traditional firms: 7 days + ৳50,000 per review vs our 30 seconds + ৳28.",
+            "Traditional firms: 7 days + ৳50,000 per review vs our < 1 min + ৳28.",
             "Local legal aggregators: directories, not AI — no audit engine, no payments, no benchmarks.",
         ],
     },
