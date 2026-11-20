@@ -1,11 +1,12 @@
 import logging
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.rate_limit import check_rate_limit, client_ip
 from app.core.security import get_current_user_optional, get_current_user
 from app.models.user import User, UserRole
 from app.models.inquiry import FeedbackSuggestion, NewsletterSubscriber
@@ -56,6 +57,7 @@ class FeedbackStatusUpdateRequest(BaseModel):
 @router.post("/feedback")
 async def submit_feedback(
     payload: FeedbackCreateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -63,6 +65,12 @@ async def submit_feedback(
     Public endpoint: Anyone can submit a suggestion or feedback.
     If authenticated, their user_id is automatically associated.
     """
+    check_rate_limit(
+        f"inquiries:feedback:{client_ip(request)}",
+        max_requests=10,
+        window_seconds=60,
+        detail="Too many feedback submissions. Please wait a minute.",
+    )
     feedback = FeedbackSuggestion(
         name=payload.name,
         contact=payload.contact,
@@ -85,11 +93,18 @@ async def submit_feedback(
 @router.post("/newsletter")
 async def subscribe_newsletter(
     payload: NewsletterSubscribeRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Public endpoint: Subscribe to statutory updates, high court precedents, and weekly insights.
     """
+    check_rate_limit(
+        f"inquiries:newsletter:{client_ip(request)}",
+        max_requests=10,
+        window_seconds=60,
+        detail="Too many subscription attempts. Please wait a minute.",
+    )
     email_clean = payload.email.strip().lower()
 
     existing = await db.scalar(

@@ -148,7 +148,9 @@ async def get_current_user_optional(
             return None
         stmt = select(User).where(User.email == email, User.is_deleted == False)
         user = (await db.execute(stmt)).scalar_one_or_none()
-        if user and int(payload.get("tv") or 1) != int(getattr(user, "token_version", 1) or 1):
+        if not user or not user.is_active:
+            return None
+        if int(payload.get("tv") or 1) != int(getattr(user, "token_version", 1) or 1):
             return None  # revoked (SEC-AUTH-03)
         return user
     except Exception:

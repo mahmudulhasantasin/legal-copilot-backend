@@ -620,7 +620,7 @@ function initMermaid(){
     });
     return;
   }
-  mermaid.initialize({ startOnLoad:false, theme:"dark", securityLevel:"loose" });
+  mermaid.initialize({ startOnLoad:false, theme:"dark", securityLevel:"strict" });
   if (typeof IntersectionObserver === "undefined"){
     mermaid.run({ nodes: els }).catch(function(){
       els.forEach(function(el){

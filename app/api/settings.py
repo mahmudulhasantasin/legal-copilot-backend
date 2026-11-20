@@ -235,8 +235,16 @@ async def set_password_for_oauth(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Allows authenticated Google/OAuth users to set an email login password directly."""
+    """Allows authenticated Google/OAuth users without an existing password to set one directly."""
+    is_oauth_unset = not current_user.hashed_password or current_user.hashed_password.startswith("GOOGLE_UNSET$")
+    if not is_oauth_unset:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password is already configured. Use /change-password to update your password.",
+        )
     current_user.hashed_password = get_password_hash(payload.new_password)
+    # Revoke old sessions upon setting a password
+    current_user.token_version = int(getattr(current_user, "token_version", 1) or 1) + 1
     await db.commit()
     return {
         "status": "success",

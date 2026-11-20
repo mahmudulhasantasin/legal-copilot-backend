@@ -365,17 +365,17 @@ class OnboardEnterpriseRequest(BaseModel):
 # ──────────────────────────────────────────────────────────
 
 def _verify_google_token(token: str) -> dict:
-
     try:
-
         aud = settings.GOOGLE_CLIENT_ID.strip() if settings.GOOGLE_CLIENT_ID else None
-
-        return id_token.verify_oauth2_token(token, google_requests.Request(), aud)
-
+        id_info = id_token.verify_oauth2_token(token, google_requests.Request(), aud)
+        email_verified = id_info.get("email_verified")
+        if email_verified is False or str(email_verified).lower() == "false":
+            raise HTTPException(400, "Google account email is not verified.")
+        return id_info
+    except HTTPException:
+        raise
     except Exception as e:
-
         logger.warning(f"Google token verification failed: {e}")
-
         raise HTTPException(401, f"Invalid or expired Google credential: {e}")
 
 

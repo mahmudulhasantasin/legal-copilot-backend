@@ -42,6 +42,12 @@ def check_rate_limit(
         cutoff = now - window_seconds
         while dq and dq[0] <= cutoff:
             dq.popleft()
+        # SEC-DOS-02: Periodic cleanup to prevent unbounded memory growth from millions of transient client IPs
+        if len(_WINDOWS) > 1000:
+            stale_keys = [k for k, v in _WINDOWS.items() if not v or v[-1] <= cutoff]
+            for k in stale_keys:
+                _WINDOWS.pop(k, None)
+
         if len(dq) >= max_requests:
             raise HTTPException(
                 429,

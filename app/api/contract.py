@@ -142,7 +142,7 @@ async def _upload_to_supabase(file_bytes: bytes, filename: str, user_id: int, co
         return file_path
     except Exception as e:
         logger.error(f"[Supabase] Upload failed: {e}")
-        raise HTTPException(500, f"Failed to upload document to secure storage: {str(e)}")
+        raise HTTPException(500, "Failed to upload document to secure storage.")
 
 
 # ──────────────────────────────────────────────────────────

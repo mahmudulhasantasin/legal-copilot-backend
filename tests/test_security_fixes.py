@@ -238,3 +238,53 @@ def test_demo_email_backdoor_removed():
     impostor = _make_user(email="mowesin210@backyr.com", role=UserRole.GENERAL)
     impostor.subscription_tier = SubscriptionTier.FREE
     assert get_tier_key(impostor) == "FREE"  # NOT "ADMIN"
+
+
+# ── SEC-AUTH-05: set-password prevents overwrite without current password ───
+
+async def test_set_password_rejects_existing_password(async_db):
+    user = _make_user(email="pw-test@example.com", hashed_password="existing_bcrypt_hash")
+    async_db.add(user)
+    await async_db.commit()
+
+    from app.api.settings import set_password_for_oauth, SetPasswordPayload
+    with pytest.raises(HTTPException) as exc:
+        await set_password_for_oauth(
+            payload=SetPasswordPayload(new_password="BrandNewPassword123!"),
+            db=async_db,
+            current_user=user,
+        )
+    assert exc.value.status_code == 400
+    assert "already configured" in exc.value.detail
+
+
+async def test_set_password_allows_oauth_user_and_increments_token_version(async_db):
+    user = _make_user(email="oauth-test@example.com", hashed_password="GOOGLE_UNSET$random")
+    user.token_version = 1
+    async_db.add(user)
+    await async_db.commit()
+
+    from app.api.settings import set_password_for_oauth, SetPasswordPayload
+    res = await set_password_for_oauth(
+        payload=SetPasswordPayload(new_password="BrandNewPassword123!"),
+        db=async_db,
+        current_user=user,
+    )
+    assert res["status"] == "success"
+    assert user.token_version == 2
+    assert not user.hashed_password.startswith("GOOGLE_UNSET$")
+
+
+# ── SEC-DOS-02: rate limiter bounded memory eviction ────────────────────────
+
+def test_rate_limiter_stale_key_eviction():
+    from app.core.rate_limit import _WINDOWS
+    # Seed 1005 expired keys
+    cutoff_time = 0.0  # long ago
+    for i in range(1005):
+        _WINDOWS[f"stale_test_key_{i}"].append(cutoff_time)
+
+    # Calling check_rate_limit should trigger the purge
+    check_rate_limit("fresh_active_key", max_requests=10, window_seconds=60)
+    assert len(_WINDOWS) <= 1000
+

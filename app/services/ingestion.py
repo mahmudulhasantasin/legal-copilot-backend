@@ -300,6 +300,14 @@ class DocumentProcessor:
         reader = PdfReader(pdf_path)
         pages = list(getattr(reader, "pages", None) or [])
 
+        # SEC-DOS-01: Prevent CPU exhaustion from massive scanned document loops
+        MAX_DOCUMENT_PAGES = 50
+        if len(pages) > MAX_DOCUMENT_PAGES:
+            raise ValueError(
+                f"Document exceeds maximum allowable page limit of {MAX_DOCUMENT_PAGES} pages (uploaded: {len(pages)} pages). "
+                "Please split the document into smaller sections before uploading."
+            )
+
         page_texts: List[str] = []
         ocr_pages: List[int] = []
         bad_reasons: List[str] = []
