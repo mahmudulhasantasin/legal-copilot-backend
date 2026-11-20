@@ -99,7 +99,13 @@ create_admin.py
 update_db.py
 setup_qdrant.py
 test.py
+scripts/list_deleted_users.py
+scripts/purge_deleted_users.py
 data/laws/all_bangladesh_laws.json
+*.bak*
+*.bak-*
+scripts/benchmark/reports/
+.zcode/
 
 # ==========================================
 # Agent, Audits & Local Context

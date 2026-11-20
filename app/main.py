@@ -1,7 +1,7 @@
 import logging
 import asyncio  # ✅ নতুন ইমপোর্ট (Render Port Binding Fix)
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -162,8 +162,17 @@ app = FastAPI(
 
 
 # ──────────────────────────────────────────────────────────
-# MIDDLEWARE (CORS)
+# MIDDLEWARE (CORS & Security Headers)
 # ──────────────────────────────────────────────────────────
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 app.add_middleware(
     CORSMiddleware,
@@ -171,12 +180,12 @@ app.add_middleware(
         "http://localhost:3000",     
         "http://localhost:5173",     
         "http://localhost:3001",     
-        "https://advotech-copilot.vercel.app",  # ✅ স্পেসিফিক লিংক
-        "https://outliers-omega.vercel.app",     # ✅ স্পেসিফিক লিংক
+        "https://advotech-copilot.vercel.app",  # Production domain
+        "https://outliers-omega.vercel.app",     # Production mirror
         "https://legal-copilot-backend-088i.onrender.com",
         "https://legal-copilot-backend-npq7.onrender.com",
     ],
-    allow_origin_regex=r"https://.*\.(vercel\.app|onrender\.com)",
+    allow_origin_regex=r"https://(advotech-copilot|outliers)(-[a-zA-Z0-9_-]+)?\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
